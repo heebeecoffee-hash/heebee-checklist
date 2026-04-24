@@ -13,44 +13,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@200;300;400;600&family=Space+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-:root{
-  --gold:#b8860b;--gold-l:#d4a017;--gold-xl:#f0c040;
-  --r:16px;--r2:22px;
-  --trans:all 0.55s cubic-bezier(0.4,0,0.2,1);
-}
-body.light{
-  --bg:#f5f5f7;--bg2:#ffffff;
-  --surface:rgba(255,255,255,0.75);--surface2:rgba(255,255,255,0.55);
-  --border:rgba(255,255,255,0.9);--border2:rgba(0,0,0,0.06);
-  --text:#1d1d1f;--text2:#424245;--text3:#86868b;
-  --shadow:0 4px 24px rgba(0,0,0,0.06);--shadow2:0 8px 40px rgba(0,0,0,0.10);
-  --check-bg:#1d1d1f;--check-fg:#ffffff;--btn-bg:#1d1d1f;--btn-fg:#ffffff;
-  --sec-icon:#b8860b;--tab-active:#1d1d1f;--tab-afg:#ffffff;
-  --tab-wrap:rgba(255,255,255,0.65);--tab-idle:rgba(0,0,0,0.0);--tab-ifg:#86868b;
-  --ring-stroke:#f0c040;--input-bg:rgba(255,255,255,0.8);--input-bdr:rgba(0,0,0,0.1);
-  --rule:linear-gradient(to right,transparent,#b8860b,transparent);
-  --done-icon:#1d1d1f;--noise-op:0.035;
-}
-body.dark{
-  --bg:#0a0a0f;--bg2:#111118;
-  --surface:rgba(255,255,255,0.06);--surface2:rgba(255,255,255,0.04);
-  --border:rgba(255,255,255,0.10);--border2:rgba(255,255,255,0.06);
-  --text:#f5f5f7;--text2:#d2d2d7;--text3:#86868b;
-  --shadow:0 4px 24px rgba(0,0,0,0.3);--shadow2:0 8px 40px rgba(0,0,0,0.5);
-  --check-bg:#f5f5f7;--check-fg:#0a0a0f;--btn-bg:#f5f5f7;--btn-fg:#0a0a0f;
-  --sec-icon:#f0c040;--tab-active:#f5f5f7;--tab-afg:#0a0a0f;
-  --tab-wrap:rgba(255,255,255,0.06);--tab-idle:transparent;--tab-ifg:#86868b;
-  --ring-stroke:#93c5fd;--input-bg:rgba(255,255,255,0.07);--input-bdr:rgba(255,255,255,0.12);
-  --rule:linear-gradient(to right,transparent,rgba(147,197,253,0.5),transparent);
-  --done-icon:#f5f5f7;--noise-op:0.04;
-}
+:root{--gold:#b8860b;--gold-l:#d4a017;--gold-xl:#f0c040;--r:16px;--r2:22px;}
+body.light{--bg:#f5f5f7;--bg2:#ffffff;--surface:rgba(255,255,255,0.75);--surface2:rgba(255,255,255,0.55);--border:rgba(255,255,255,0.9);--border2:rgba(0,0,0,0.06);--text:#1d1d1f;--text2:#424245;--text3:#86868b;--shadow:0 4px 24px rgba(0,0,0,0.06);--shadow2:0 8px 40px rgba(0,0,0,0.10);--check-bg:#1d1d1f;--check-fg:#ffffff;--btn-bg:#1d1d1f;--btn-fg:#ffffff;--sec-icon:#b8860b;--tab-active:#1d1d1f;--tab-afg:#ffffff;--tab-wrap:rgba(255,255,255,0.65);--tab-idle:rgba(0,0,0,0.0);--tab-ifg:#86868b;--ring-stroke:#f0c040;--input-bg:rgba(255,255,255,0.8);--input-bdr:rgba(0,0,0,0.1);--rule:linear-gradient(to right,transparent,#b8860b,transparent);--done-icon:#1d1d1f;--noise-op:0.035;}
+body.dark{--bg:#0a0a0f;--bg2:#111118;--surface:rgba(255,255,255,0.06);--surface2:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.10);--border2:rgba(255,255,255,0.06);--text:#f5f5f7;--text2:#d2d2d7;--text3:#86868b;--shadow:0 4px 24px rgba(0,0,0,0.3);--shadow2:0 8px 40px rgba(0,0,0,0.5);--check-bg:#f5f5f7;--check-fg:#0a0a0f;--btn-bg:#f5f5f7;--btn-fg:#0a0a0f;--sec-icon:#f0c040;--tab-active:#f5f5f7;--tab-afg:#0a0a0f;--tab-wrap:rgba(255,255,255,0.06);--tab-idle:transparent;--tab-ifg:#86868b;--ring-stroke:#93c5fd;--input-bg:rgba(255,255,255,0.07);--input-bdr:rgba(255,255,255,0.12);--rule:linear-gradient(to right,transparent,rgba(147,197,253,0.5),transparent);--done-icon:#f5f5f7;--noise-op:0.04;}
 html{scroll-behavior:smooth;}
-body{
-  font-family:'Nunito Sans',sans-serif;font-weight:300;
-  background:var(--bg);min-height:100vh;overflow-x:hidden;
-  color:var(--text);-webkit-font-smoothing:antialiased;
-  transition:background 0.55s cubic-bezier(0.4,0,0.2,1),color 0.55s cubic-bezier(0.4,0,0.2,1);
-}
+body{font-family:'Nunito Sans',sans-serif;font-weight:300;background:var(--bg);min-height:100vh;overflow-x:hidden;color:var(--text);-webkit-font-smoothing:antialiased;transition:background 0.55s cubic-bezier(0.4,0,0.2,1),color 0.55s cubic-bezier(0.4,0,0.2,1);}
 .bg-layer{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
 .bg-orb{position:absolute;border-radius:50%;filter:blur(90px);animation:orbDrift ease-in-out infinite alternate;transition:opacity 0.6s ease,background 0.6s ease;}
 body.light .orb1{width:500px;height:500px;top:-80px;right:-80px;background:radial-gradient(circle,#e8d5b0,transparent 70%);opacity:.5;animation-duration:14s;}
@@ -61,12 +28,28 @@ body.dark .orb2{width:400px;height:400px;bottom:-60px;left:-60px;background:radi
 body.dark .orb3{width:280px;height:280px;top:45%;left:50%;background:radial-gradient(circle,#1c1c30,transparent 70%);opacity:.5;animation-duration:22s;animation-delay:10s;}
 @keyframes orbDrift{0%{transform:translate(0,0);}100%{transform:translate(28px,18px);}}
 body::after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");opacity:var(--noise-op);transition:opacity 0.55s ease;}
+/* ── LOADING ── */
+.loading-screen{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--bg);transition:opacity 0.4s ease;}
+.loading-screen.hidden{opacity:0;pointer-events:none;}
+.loading-name{font-family:'Nunito Sans',sans-serif;font-weight:200;font-size:2rem;letter-spacing:8px;text-transform:uppercase;color:var(--text);}
+.loading-dots{display:flex;gap:8px;}
+.loading-dots span{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:dotPulse 1.2s ease-in-out infinite;}
+.loading-dots span:nth-child(2){animation-delay:.2s;}
+.loading-dots span:nth-child(3){animation-delay:.4s;}
+@keyframes dotPulse{0%,80%,100%{opacity:.2;transform:scale(0.8);}40%{opacity:1;transform:scale(1);}}
+.error-screen{position:fixed;inset:0;z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:var(--bg);padding:40px;}
+.error-screen.show{display:flex;}
+.error-icon{font-size:2rem;color:var(--text3);}
+.error-title{font-family:'Space Mono',monospace;font-size:.7rem;letter-spacing:3px;text-transform:uppercase;color:var(--text2);}
+.error-msg{font-size:.8rem;color:var(--text3);text-align:center;line-height:1.6;}
+.retry-btn{padding:12px 28px;border-radius:30px;border:1px solid var(--input-bdr);background:transparent;color:var(--text2);font-family:'Space Mono',monospace;font-size:.6rem;letter-spacing:3px;cursor:pointer;text-transform:uppercase;}
+/* ── MAIN ── */
 .app{position:relative;z-index:10;max-width:540px;margin:0 auto;padding:0 20px 80px;}
 .hdr{padding:56px 0 32px;text-align:center;}
-.hdr-eyebrow{font-family:'Space Mono',monospace;font-size:.55rem;letter-spacing:5px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;transition:color 0.4s ease;}
-.hdr-name{font-family:'Nunito Sans',sans-serif;font-weight:200;font-size:clamp(2.2rem,7vw,3rem);color:var(--text);letter-spacing:8px;text-transform:uppercase;line-height:1;transition:color 0.4s ease;}
-.hdr-rule{width:40px;height:1px;background:var(--rule);margin:16px auto 0;transition:background 0.4s ease;}
-.tabs{display:flex;gap:6px;background:var(--tab-wrap);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--border);border-radius:60px;padding:5px;box-shadow:var(--shadow);margin-bottom:28px;transition:background 0.55s ease,border-color 0.55s ease,box-shadow 0.55s ease;}
+.hdr-eyebrow{font-family:'Space Mono',monospace;font-size:.55rem;letter-spacing:5px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;}
+.hdr-name{font-family:'Nunito Sans',sans-serif;font-weight:200;font-size:clamp(2.2rem,7vw,3rem);color:var(--text);letter-spacing:8px;text-transform:uppercase;line-height:1;}
+.hdr-rule{width:40px;height:1px;background:var(--rule);margin:16px auto 0;}
+.tabs{display:flex;gap:6px;background:var(--tab-wrap);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--border);border-radius:60px;padding:5px;box-shadow:var(--shadow);margin-bottom:28px;}
 .tab{flex:1;padding:13px 18px;border:none;border-radius:55px;cursor:pointer;font-family:'Nunito Sans',sans-serif;font-weight:600;font-size:.82rem;letter-spacing:.5px;background:var(--tab-idle);color:var(--tab-ifg);transition:background 0.4s cubic-bezier(0.4,0,0.2,1),color 0.4s cubic-bezier(0.4,0,0.2,1),box-shadow 0.4s cubic-bezier(0.4,0,0.2,1),transform 0.2s ease;}
 .tab:active{transform:scale(0.97);}
 .tab.active-tab{background:var(--tab-active);color:var(--tab-afg);box-shadow:0 2px 14px rgba(0,0,0,0.15);}
@@ -75,7 +58,7 @@ body::after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;back
 .panel.exit{animation:panelExit 0.3s cubic-bezier(0.4,0,0.2,1) forwards;}
 @keyframes panelReveal{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
 @keyframes panelExit{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(-10px);}}
-.hero{border-radius:var(--r2);margin-bottom:16px;position:relative;overflow:hidden;padding:36px 28px 28px;transition:box-shadow 0.4s ease;}
+.hero{border-radius:var(--r2);margin-bottom:16px;position:relative;overflow:hidden;padding:36px 28px 28px;}
 body.light .hero-o{background:linear-gradient(160deg,#1d1d1f 0%,#2d2417 60%,#3d3020 100%);box-shadow:0 20px 60px rgba(0,0,0,0.18);}
 body.dark .hero-c{background:linear-gradient(160deg,#05050a 0%,#0a0f1c 60%,#111828 100%);box-shadow:0 20px 60px rgba(0,0,0,0.5);}
 .hero-mesh{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 80% 20%,rgba(212,160,23,0.15) 0%,transparent 60%);}
@@ -88,27 +71,27 @@ body.dark .hero-c{background:linear-gradient(160deg,#05050a 0%,#0a0f1c 60%,#1118
 .ring-tr{fill:none;stroke:rgba(255,255,255,.08);stroke-width:2.5;}
 .ring-fl{fill:none;stroke-width:2.5;stroke-linecap:round;transition:stroke-dashoffset .7s cubic-bezier(.4,0,.2,1),stroke .5s ease;}
 .ring-inner{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
-.ring-n{font-family:'Space Mono',monospace;font-size:.78rem;font-weight:400;line-height:1;color:var(--ring-stroke);transition:color 0.4s ease;}
+.ring-n{font-family:'Space Mono',monospace;font-size:.78rem;font-weight:400;line-height:1;color:var(--ring-stroke);}
 .ring-lbl{font-size:.44rem;color:rgba(255,255,255,.25);letter-spacing:2px;margin-top:2px;font-family:'Space Mono',monospace;}
-.meta{background:var(--surface);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--border);border-radius:var(--r2);padding:20px;margin-bottom:16px;box-shadow:var(--shadow);display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;transition:background 0.5s ease,border-color 0.5s ease,box-shadow 0.5s ease;}
-.meta-item label{display:block;font-family:'Space Mono',monospace;font-size:.5rem;letter-spacing:3px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;transition:color 0.4s ease;}
-.meta-item input,.meta-item select{width:100%;background:var(--input-bg);border:1px solid var(--input-bdr);border-radius:10px;padding:9px 11px;color:var(--text);font-size:.78rem;font-family:'Nunito Sans',sans-serif;font-weight:400;outline:none;-webkit-appearance:none;transition:border .2s,background .2s,color 0.4s ease;}
+.meta{background:var(--surface);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--border);border-radius:var(--r2);padding:20px;margin-bottom:16px;box-shadow:var(--shadow);display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+.meta-item label{display:block;font-family:'Space Mono',monospace;font-size:.5rem;letter-spacing:3px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;}
+.meta-item input,.meta-item select{width:100%;background:var(--input-bg);border:1px solid var(--input-bdr);border-radius:10px;padding:9px 11px;color:var(--text);font-size:.78rem;font-family:'Nunito Sans',sans-serif;font-weight:400;outline:none;-webkit-appearance:none;transition:border .2s,background .2s;}
 .meta-item input:focus,.meta-item select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,134,11,.12);}
 .meta-item select option{background:var(--bg2);color:var(--text);}
-.done-wrap{display:none;background:var(--surface);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--border);border-radius:var(--r2);padding:32px 24px;text-align:center;margin-bottom:16px;box-shadow:var(--shadow2);transition:background 0.5s ease,border-color 0.5s ease;}
+.done-wrap{display:none;background:var(--surface);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--border);border-radius:var(--r2);padding:32px 24px;text-align:center;margin-bottom:16px;box-shadow:var(--shadow2);}
 .done-wrap.show{display:block;animation:panelReveal .5s ease;}
-.done-icon{font-size:2.2rem;margin-bottom:12px;display:block;color:var(--done-icon);animation:iconPop .6s cubic-bezier(.4,0,.2,1);transition:color 0.4s ease;}
+.done-icon{font-size:2.2rem;margin-bottom:12px;display:block;color:var(--done-icon);animation:iconPop .6s cubic-bezier(.4,0,.2,1);}
 @keyframes iconPop{0%{transform:scale(0);}70%{transform:scale(1.15);}100%{transform:scale(1);}}
-.done-title{font-family:'Nunito Sans',sans-serif;font-weight:200;font-size:1.6rem;letter-spacing:3px;text-transform:uppercase;color:var(--text);margin-bottom:6px;transition:color 0.4s ease;}
-.done-msg{font-size:.8rem;color:var(--text3);font-style:italic;letter-spacing:.3px;transition:color 0.4s ease;}
-.sec{background:var(--surface);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow);transition:background 0.5s ease,border-color 0.5s ease,box-shadow 0.3s ease;}
+.done-title{font-family:'Nunito Sans',sans-serif;font-weight:200;font-size:1.6rem;letter-spacing:3px;text-transform:uppercase;color:var(--text);margin-bottom:6px;}
+.done-msg{font-size:.8rem;color:var(--text3);font-style:italic;letter-spacing:.3px;}
+.sec{background:var(--surface);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--border);border-radius:var(--r2);margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow);}
 .sec:hover{box-shadow:var(--shadow2);}
-.sec-head{padding:16px 20px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border2);transition:border-color 0.4s ease;}
-.sec-icon{font-size:.9rem;color:var(--sec-icon);font-family:'Space Mono',monospace;width:20px;text-align:center;transition:color 0.4s ease;}
-.sec-name{font-family:'Space Mono',monospace;font-size:.6rem;font-weight:400;letter-spacing:3px;text-transform:uppercase;color:var(--text2);flex:1;transition:color 0.4s ease;}
-.sec-count{font-family:'Space Mono',monospace;font-size:.55rem;color:var(--text3);letter-spacing:1px;background:var(--surface2);padding:3px 9px;border-radius:20px;transition:all 0.4s ease;}
+.sec-head{padding:16px 20px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border2);}
+.sec-icon{font-size:.9rem;color:var(--sec-icon);font-family:'Space Mono',monospace;width:20px;text-align:center;}
+.sec-name{font-family:'Space Mono',monospace;font-size:.6rem;font-weight:400;letter-spacing:3px;text-transform:uppercase;color:var(--text2);flex:1;}
+.sec-count{font-family:'Space Mono',monospace;font-size:.55rem;color:var(--text3);letter-spacing:1px;background:var(--surface2);padding:3px 9px;border-radius:20px;}
 .task-list{padding:0 4px 8px;}
-.task{display:flex;align-items:flex-start;gap:14px;padding:14px 16px;border-radius:14px;cursor:pointer;border-bottom:1px solid var(--border2);position:relative;overflow:hidden;margin:4px 0;transition:background 0.2s ease,border-color 0.4s ease,opacity 0.3s ease;}
+.task{display:flex;align-items:flex-start;gap:14px;padding:14px 16px;border-radius:14px;cursor:pointer;border-bottom:1px solid var(--border2);position:relative;overflow:hidden;margin:4px 0;transition:background 0.2s ease,opacity 0.3s ease;}
 .task:last-child{border-bottom:none;}
 .task:hover{background:var(--surface2);}
 .task.done{opacity:.38;}
@@ -116,8 +99,8 @@ body.dark .hero-c{background:linear-gradient(160deg,#05050a 0%,#0a0f1c 60%,#1118
 .task.done .task-check{background:var(--check-bg);border-color:var(--check-bg);color:var(--check-fg);box-shadow:0 2px 10px rgba(0,0,0,0.15);}
 .task-body{flex:1;min-width:0;}
 .task-meta{display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;}
-.who-tag{font-family:'Space Mono',monospace;font-size:.6rem;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.5px;text-transform:uppercase;border:1px solid transparent;transition:background 0.4s ease,color 0.4s ease,border-color 0.4s ease;}
-.pri-tag{font-family:'Space Mono',monospace;font-size:.52rem;padding:2px 8px;border-radius:20px;letter-spacing:.5px;border:1px solid transparent;font-weight:400;transition:background 0.4s ease;}
+.who-tag{font-family:'Space Mono',monospace;font-size:.6rem;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.5px;text-transform:uppercase;border:1px solid transparent;transition:background 0.4s ease,color 0.4s ease;}
+.pri-tag{font-family:'Space Mono',monospace;font-size:.52rem;padding:2px 8px;border-radius:20px;letter-spacing:.5px;border:1px solid transparent;font-weight:400;}
 body.light .p-red{background:#fef2f2;color:#dc2626;border-color:rgba(220,38,38,0.2);}
 body.light .p-amb{background:#fffbeb;color:#d97706;border-color:rgba(217,119,6,0.2);}
 body.light .p-grn{background:#f0fdf4;color:#16a34a;border-color:rgba(22,163,74,0.2);}
@@ -126,7 +109,7 @@ body.dark .p-amb{background:rgba(245,158,11,0.12);color:#fbbf24;border-color:rgb
 body.dark .p-grn{background:rgba(34,197,94,0.12);color:#4ade80;border-color:rgba(34,197,94,0.2);}
 .task-name{font-size:.875rem;font-weight:400;color:var(--text);line-height:1.5;transition:color 0.2s ease,text-decoration 0.2s ease;letter-spacing:.1px;}
 .task.done .task-name{text-decoration:line-through;color:var(--text3);}
-.task-tip{font-size:.7rem;color:var(--text3);margin-top:4px;font-style:italic;line-height:1.5;font-weight:300;transition:color 0.4s ease;}
+.task-tip{font-size:.7rem;color:var(--text3);margin-top:4px;font-style:italic;line-height:1.5;font-weight:300;}
 @keyframes popOut{0%{transform:scale(0) rotate(-10deg);opacity:1;}60%{transform:scale(1.4) rotate(5deg);opacity:.9;}100%{transform:scale(0) rotate(15deg);opacity:0;}}
 .burst{position:absolute;pointer-events:none;font-size:1rem;animation:popOut .55s ease-out forwards;}
 .email-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:17px;border-radius:var(--r2);border:none;font-family:'Nunito Sans',sans-serif;font-weight:600;font-size:.82rem;letter-spacing:2px;text-transform:uppercase;cursor:pointer;margin-bottom:10px;background:var(--btn-bg);color:var(--btn-fg);box-shadow:0 4px 20px rgba(0,0,0,0.12);transition:background 0.5s ease,color 0.5s ease,transform 0.2s ease,box-shadow 0.3s ease;}
@@ -140,99 +123,54 @@ body.dark .es-ok{background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rg
 body.dark .es-err{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);display:block;}
 .reset-btn{display:block;margin:0 auto 6px;padding:10px 26px;border-radius:30px;border:1px solid var(--input-bdr);background:transparent;color:var(--text3);font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:3px;cursor:pointer;text-transform:uppercase;transition:border-color 0.2s,color 0.2s;}
 .reset-btn:hover{border-color:var(--text3);color:var(--text2);}
-.divider{width:100%;height:1px;background:var(--border2);margin:24px 0;transition:background 0.4s ease;}
+.divider{width:100%;height:1px;background:var(--border2);margin:24px 0;}
 ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--input-bdr);border-radius:2px;}
 </style>
 </head>
 <body class="light">
+<div class="bg-layer"><div class="bg-orb orb1"></div><div class="bg-orb orb2"></div><div class="bg-orb orb3"></div></div>
 
-<div class="bg-layer">
-  <div class="bg-orb orb1"></div>
-  <div class="bg-orb orb2"></div>
-  <div class="bg-orb orb3"></div>
+<!-- Loading Screen -->
+<div class="loading-screen" id="loadingScreen">
+  <div class="loading-name">Heebee</div>
+  <div class="loading-dots"><span></span><span></span><span></span></div>
 </div>
 
-<div class="app">
+<!-- Error Screen -->
+<div class="error-screen" id="errorScreen">
+  <div class="error-icon">◇</div>
+  <div class="error-title">Connection Failed</div>
+  <div class="error-msg">Could not load tasks from the server.<br>Check your internet connection and try again.</div>
+  <button class="retry-btn" onclick="loadTasks()">Retry</button>
+</div>
+
+<!-- Main App (hidden until tasks load) -->
+<div class="app" id="mainApp" style="display:none;">
   <div class="hdr">
     <div class="hdr-eyebrow">Shift Checklist</div>
-    <div class="hdr-name">Heebee Coffee</div>
+    <div class="hdr-name" id="cafeName">Heebee Coffee</div>
     <div class="hdr-rule"></div>
   </div>
-
   <div class="tabs">
     <button class="tab active-tab" id="tabO" onclick="sw('open')">Opening</button>
     <button class="tab" id="tabC" onclick="sw('close')">Closing</button>
   </div>
-
-  <!-- OPENING PANEL -->
+  <!-- Opening Panel -->
   <div class="panel active" id="panelO">
-    <div class="hero hero-o">
-      <div class="hero-mesh"></div>
-      <span class="hero-label">Morning Shift</span>
-      <div class="hero-title">Good Morning.<br>Let's Begin.</div>
-      <div class="hero-sub">"Excellence starts before the first customer walks in."</div>
-      <div class="ring-pos">
-        <svg width="72" height="72" viewBox="0 0 72 72">
-          <circle class="ring-tr" cx="36" cy="36" r="30"/>
-          <circle class="ring-fl" id="rfO" cx="36" cy="36" r="30" stroke-dasharray="188.5" stroke-dashoffset="188.5" stroke="#f0c040"/>
-        </svg>
-        <div class="ring-inner"><span class="ring-n" id="rpO">0%</span><span class="ring-lbl">DONE</span></div>
-      </div>
-    </div>
-    <div class="meta">
-      <div class="meta-item"><label>Branch</label>
-        <select id="brO">
-          <option>Main Café</option>
-          <option>Branch 2</option>
-          <option>Branch 3</option>
-        </select>
-      </div>
-      <div class="meta-item"><label>Staff</label><input id="stO" type="text" placeholder="Your name"></div>
-      <div class="meta-item"><label>Start</label><input id="tmO" type="time"></div>
-    </div>
-    <div class="done-wrap" id="doneO">
-      <span class="done-icon">✦</span>
-      <div class="done-title">Café is Ready</div>
-      <div class="done-msg">Every task complete. Go make someone's morning exceptional.</div>
-    </div>
+    <div class="hero hero-o"><div class="hero-mesh"></div><span class="hero-label">Morning Shift</span><div class="hero-title">Good Morning.<br>Let's Begin.</div><div class="hero-sub">"Excellence starts before the first customer walks in."</div><div class="ring-pos"><svg width="72" height="72" viewBox="0 0 72 72"><circle class="ring-tr" cx="36" cy="36" r="30"/><circle class="ring-fl" id="rfO" cx="36" cy="36" r="30" stroke-dasharray="188.5" stroke-dashoffset="188.5" stroke="#f0c040"/></svg><div class="ring-inner"><span class="ring-n" id="rpO">0%</span><span class="ring-lbl">DONE</span></div></div></div>
+    <div class="meta"><div class="meta-item"><label>Branch</label><select id="brO"></select></div><div class="meta-item"><label>Staff</label><input id="stO" type="text" placeholder="Your name"></div><div class="meta-item"><label>Start</label><input id="tmO" type="time"></div></div>
+    <div class="done-wrap" id="doneO"><span class="done-icon">✦</span><div class="done-title">Café is Ready</div><div class="done-msg">Every task complete. Go make someone's morning exceptional.</div></div>
     <div id="openTasksContainer"></div>
     <div class="divider"></div>
     <div class="email-status" id="esO"></div>
     <button class="email-btn" id="ebO" onclick="sendReport('open')">Send Opening Report</button>
     <button class="reset-btn" onclick="rst('open')">Reset Shift</button>
   </div>
-
-  <!-- CLOSING PANEL -->
+  <!-- Closing Panel -->
   <div class="panel" id="panelC">
-    <div class="hero hero-c">
-      <div class="hero-mesh-c"></div>
-      <span class="hero-label">Evening Shift</span>
-      <div class="hero-title">Last Call.<br>Finish Strong.</div>
-      <div class="hero-sub">"How you close tonight is how you open tomorrow."</div>
-      <div class="ring-pos">
-        <svg width="72" height="72" viewBox="0 0 72 72">
-          <circle class="ring-tr" cx="36" cy="36" r="30"/>
-          <circle class="ring-fl" id="rfC" cx="36" cy="36" r="30" stroke-dasharray="188.5" stroke-dashoffset="188.5" stroke="#93c5fd"/>
-        </svg>
-        <div class="ring-inner"><span class="ring-n" id="rpC">0%</span><span class="ring-lbl">DONE</span></div>
-      </div>
-    </div>
-    <div class="meta">
-      <div class="meta-item"><label>Branch</label>
-        <select id="brC">
-          <option>Main Café</option>
-          <option>Branch 2</option>
-          <option>Branch 3</option>
-        </select>
-      </div>
-      <div class="meta-item"><label>Staff</label><input id="stC" type="text" placeholder="Your name"></div>
-      <div class="meta-item"><label>End</label><input id="tmC" type="time"></div>
-    </div>
-    <div class="done-wrap" id="doneC">
-      <span class="done-icon">✦</span>
-      <div class="done-title">All Done</div>
-      <div class="done-msg">Exceptional work tonight. Lock up and rest well.</div>
-    </div>
+    <div class="hero hero-c"><div class="hero-mesh-c"></div><span class="hero-label">Evening Shift</span><div class="hero-title">Last Call.<br>Finish Strong.</div><div class="hero-sub">"How you close tonight is how you open tomorrow."</div><div class="ring-pos"><svg width="72" height="72" viewBox="0 0 72 72"><circle class="ring-tr" cx="36" cy="36" r="30"/><circle class="ring-fl" id="rfC" cx="36" cy="36" r="30" stroke-dasharray="188.5" stroke-dashoffset="188.5" stroke="#93c5fd"/></svg><div class="ring-inner"><span class="ring-n" id="rpC">0%</span><span class="ring-lbl">DONE</span></div></div></div>
+    <div class="meta"><div class="meta-item"><label>Branch</label><select id="brC"></select></div><div class="meta-item"><label>Staff</label><input id="stC" type="text" placeholder="Your name"></div><div class="meta-item"><label>End</label><input id="tmC" type="time"></div></div>
+    <div class="done-wrap" id="doneC"><span class="done-icon">✦</span><div class="done-title">All Done</div><div class="done-msg">Exceptional work tonight. Lock up and rest well.</div></div>
     <div id="closeTasksContainer"></div>
     <div class="divider"></div>
     <div class="email-status" id="esC"></div>
@@ -242,341 +180,126 @@ body.dark .es-err{background:rgba(239,68,68,.1);color:#f87171;border:1px solid r
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════
-//  ⚙️  CONFIGURATION — UPDATE THESE
-// ═══════════════════════════════════════════════════════════
-
-// Paste your Google Apps Script Web App URL here:
+// ══════════════════════════════════════════════
+//  ⚙️  PASTE YOUR GOOGLE APPS SCRIPT URL HERE
+// ══════════════════════════════════════════════
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxTOYpFlT6JOEoPe8GZoe5ArZc23NpHp22vPheQezj59BL9ROPit0jFFiZmVR8rDK0Zfw/exec";
 
-// Branch names
-const BRANCHES = ["Main Café", "Branch 2", "Branch 3"];
-
-// ═══════════════════════════════════════════════════════════
-//  📋  TASKS — Edit to match your actual task lists
-//  Each task: { task, who, tip, priority, section }
-//  priority: "CRITICAL" | "HIGH" | "NORMAL"
-//  who: "Barista 1" | "Barista 2" | "Barista 3" | "Manager" | "All Staff"
-// ═══════════════════════════════════════════════════════════
-
-const OPENING_TASKS = [
-  // Before Opening
-  { section:"Before Opening", task:"Switch on all appliances & lights", who:"Manager", tip:"Check coffee machine, grinder, fridge, display cabinet", priority:"CRITICAL" },
-  { section:"Before Opening", task:"Wash hands & check uniform", who:"All Staff", tip:"Full uniform including apron and name badge", priority:"HIGH" },
-  { section:"Before Opening", task:"Check previous night handover notes", who:"Manager", tip:"Review any flags from closing shift", priority:"HIGH" },
-  { section:"Before Opening", task:"Sweep & mop floor", who:"Barista 1", tip:"Front of house and behind bar", priority:"NORMAL" },
-  { section:"Before Opening", task:"Wipe all surfaces & tables", who:"Barista 2", tip:"Use sanitiser spray — tables, bar counter, windowsills", priority:"NORMAL" },
-  { section:"Before Opening", task:"Check washrooms are clean & stocked", who:"Barista 1", tip:"Soap, paper towels, toilet roll", priority:"HIGH" },
-  // Espresso Bar
-  { section:"Espresso Bar", task:"Purge machine & pull test shot", who:"Barista 1", tip:"Espresso should extract in 25–30 seconds", priority:"CRITICAL" },
-  { section:"Espresso Bar", task:"Dial in grind settings", who:"Barista 1", tip:"Adjust until test shot is dialled", priority:"CRITICAL" },
-  { section:"Espresso Bar", task:"Clean & purge steam wand", who:"Barista 1", tip:"Purge before and after steaming", priority:"HIGH" },
-  { section:"Espresso Bar", task:"Fill hopper with fresh beans", who:"Barista 1", tip:"Check roast date — use beans within 2 weeks of roast", priority:"HIGH" },
-  { section:"Espresso Bar", task:"Stock milk in bar fridge", who:"Barista 2", tip:"Whole, semi-skimmed, oat, almond, soy", priority:"HIGH" },
-  { section:"Espresso Bar", task:"Check & refill syrups", who:"Barista 2", tip:"Vanilla, caramel, hazelnut at minimum", priority:"NORMAL" },
-  { section:"Espresso Bar", task:"Stock cups, lids & sleeves at bar", who:"Barista 2", tip:"All sizes — small, medium, large", priority:"NORMAL" },
-  { section:"Espresso Bar", task:"Fill ice bin", who:"Barista 2", tip:"Ice should be half full before opening", priority:"NORMAL" },
-  // Cabinet & Pastries
-  { section:"Cabinet & Pastries", task:"Receive & check bakery delivery", who:"Manager", tip:"Check quantities vs order — flag any issues", priority:"HIGH" },
-  { section:"Cabinet & Pastries", task:"Date-label all bakery items", who:"Barista 3", tip:"Use-by label on every item before display", priority:"CRITICAL" },
-  { section:"Cabinet & Pastries", task:"Check fridge temperature", who:"Manager", tip:"Must be below 5°C — log reading", priority:"CRITICAL" },
-  { section:"Cabinet & Pastries", task:"Fill & style display cabinet", who:"Barista 3", tip:"Neat presentation — price tags visible", priority:"HIGH" },
-  { section:"Cabinet & Pastries", task:"Set up condiment station", who:"Barista 2", tip:"Sugar, sweeteners, napkins, stirrers topped up", priority:"NORMAL" },
-  // Till & Operations
-  { section:"Till & Operations", task:"Set up float & check POS", who:"Manager", tip:"Standard float — count and confirm before logging", priority:"CRITICAL" },
-  { section:"Till & Operations", task:"Check card machine & printer roll", who:"Manager", tip:"Test print receipt — replace roll if low", priority:"HIGH" },
-  { section:"Till & Operations", task:"Brief staff on specials & 86 items", who:"Manager", tip:"Any sold-out items or daily specials to know", priority:"HIGH" },
-  { section:"Till & Operations", task:"Full walk of café before doors open", who:"Manager", tip:"Tables set, music on, ambience right", priority:"HIGH" },
-  { section:"Till & Operations", task:"Turn on music & set volume", who:"Barista 1", tip:"Playlist on, volume appropriate for opening", priority:"NORMAL" },
-  { section:"Till & Operations", task:"Unlock & flip open sign", who:"Manager", tip:"Doors open on time — not early, not late", priority:"HIGH" },
-];
-
-const CLOSING_TASKS = [
-  // Last Hour
-  { section:"Last Hour", task:"Note items running low for tomorrow", who:"Manager", tip:"Check all fridges, dry store, and bar stock", priority:"HIGH" },
-  { section:"Last Hour", task:"Pre-wipe bar surfaces", who:"Barista 1", tip:"First pass clean before rush dies down", priority:"NORMAL" },
-  { section:"Last Hour", task:"Run down milk & perishables", who:"Barista 2", tip:"Don't open new milk within last hour if possible", priority:"NORMAL" },
-  // After Last Customer
-  { section:"After Last Customer", task:"Last customer out & doors closed", who:"Manager", tip:"Politely remind any lingering customers", priority:"CRITICAL" },
-  { section:"After Last Customer", task:"Lock front door", who:"Manager", tip:"Double-check lock", priority:"CRITICAL" },
-  { section:"After Last Customer", task:"Flip closed sign", who:"Barista 1", tip:"", priority:"NORMAL" },
-  { section:"After Last Customer", task:"Stop music", who:"Barista 1", tip:"", priority:"NORMAL" },
-  // Machine Clean
-  { section:"Machine Clean", task:"Backflush espresso machine", who:"Barista 1", tip:"Use backflush detergent — 5 cycles minimum", priority:"CRITICAL" },
-  { section:"Machine Clean", task:"Remove & scrub portafilters", who:"Barista 1", tip:"Soak in hot water with cleaner", priority:"HIGH" },
-  { section:"Machine Clean", task:"Clean & purge steam wand thoroughly", who:"Barista 1", tip:"Soak tip in cleaner solution", priority:"HIGH" },
-  { section:"Machine Clean", task:"Empty & clean drip tray", who:"Barista 1", tip:"Rinse and dry before replacing", priority:"HIGH" },
-  { section:"Machine Clean", task:"Brush & wipe grinder", who:"Barista 1", tip:"Clear ground coffee from chute and body", priority:"HIGH" },
-  { section:"Machine Clean", task:"Set machine to standby", who:"Barista 1", tip:"Do not switch off fully — standby mode only", priority:"HIGH" },
-  // Food & Orders
-  { section:"Food & Orders", task:"Remove remaining pastries from display", who:"Barista 3", tip:"Log quantities of leftover items", priority:"HIGH" },
-  { section:"Food & Orders", task:"Check & discard expired items", who:"Manager", tip:"Nothing past use-by stays in fridge overnight", priority:"CRITICAL" },
-  { section:"Food & Orders", task:"Wrap & store remaining food correctly", who:"Barista 3", tip:"Cling film, label, correct fridge shelf", priority:"HIGH" },
-  { section:"Food & Orders", task:"Check fridge temperature before close", who:"Manager", tip:"Log reading — must be below 5°C", priority:"CRITICAL" },
-  { section:"Food & Orders", task:"Write order list for tomorrow", who:"Manager", tip:"Check stock levels — place supplier orders if needed", priority:"HIGH" },
-  // Surfaces & Floor
-  { section:"Surfaces & Floor", task:"Wipe all bar surfaces with sanitiser", who:"Barista 2", tip:"Full bar, back bar, and equipment exteriors", priority:"HIGH" },
-  { section:"Surfaces & Floor", task:"Clean all tables & stack chairs", who:"Barista 3", tip:"Wipe table tops and bases", priority:"NORMAL" },
-  { section:"Surfaces & Floor", task:"Sweep entire floor", who:"Barista 2", tip:"Including behind bar and under furniture", priority:"HIGH" },
-  { section:"Surfaces & Floor", task:"Mop entire floor", who:"Barista 2", tip:"Use sanitiser solution — mop bar floor last", priority:"HIGH" },
-  { section:"Surfaces & Floor", task:"Clean & sanitise washrooms", who:"Barista 3", tip:"Toilet, sink, mirror, floor — restock supplies", priority:"HIGH" },
-  { section:"Surfaces & Floor", task:"Empty all bins & replace liners", who:"Barista 3", tip:"All bins — bar, front of house, washrooms", priority:"HIGH" },
-  { section:"Surfaces & Floor", task:"Wash, sanitise & hang cloths to dry", who:"Barista 2", tip:"Don't leave wet cloths bundled overnight", priority:"NORMAL" },
-  // Cash & Reports
-  { section:"Cash & Reports", task:"Count & reconcile cash float", who:"Manager", tip:"Compare to POS total — log any variances", priority:"CRITICAL" },
-  { section:"Cash & Reports", task:"Complete daily sales report", who:"Manager", tip:"Log sales, covers, voids, and any incidents", priority:"HIGH" },
-  // Lock Up
-  { section:"Lock Up", task:"Check all appliances are off", who:"Manager", tip:"Grinder, blender, display lights, any heating elements", priority:"CRITICAL" },
-  { section:"Lock Up", task:"Gas check", who:"Manager", tip:"Walk kitchen/back area — confirm gas is off", priority:"CRITICAL" },
-  { section:"Lock Up", task:"Switch off non-essential lights", who:"Manager", tip:"Leave only security/overnight lights on", priority:"HIGH" },
-  { section:"Lock Up", task:"Check all windows are closed", who:"Manager", tip:"Front and back of house", priority:"HIGH" },
-  { section:"Lock Up", task:"Lock back door", who:"Manager", tip:"Test handle after locking", priority:"CRITICAL" },
-  { section:"Lock Up", task:"Set alarm", who:"Manager", tip:"Confirm code accepted and LED activates", priority:"CRITICAL" },
-  { section:"Lock Up", task:"Lock front door & leave", who:"Manager", tip:"Double-check lock — you're done", priority:"CRITICAL" },
-];
-
-// ═══════════════════════════════════════════════════════════
-//  🎨  RENDERING
-// ═══════════════════════════════════════════════════════════
-
+// ══════════════════════════════════════════════
+//  🎨  COLORS & SECTION DETECTION
+// ══════════════════════════════════════════════
 const WHO_COLORS = {
-  'barista 1': {lb:'#dcfce7',lf:'#14532d',db:'rgba(34,197,94,0.18)',df:'#86efac'},
-  'barista 2': {lb:'#dbeafe',lf:'#1e3a8a',db:'rgba(99,179,237,0.18)',df:'#93c5fd'},
-  'barista 3': {lb:'#ede9fe',lf:'#4c1d95',db:'rgba(167,139,250,0.18)',df:'#c4b5fd'},
-  'manager':   {lb:'#fef9c3',lf:'#713f12',db:'rgba(251,191,36,0.18)',df:'#fde047'},
-  'all staff': {lb:'#ffe4e6',lf:'#881337',db:'rgba(251,113,133,0.18)',df:'#fda4af'},
+  'barista 1':{lb:'#dcfce7',lf:'#14532d',db:'rgba(34,197,94,0.18)',df:'#86efac'},
+  'barista 2':{lb:'#dbeafe',lf:'#1e3a8a',db:'rgba(99,179,237,0.18)',df:'#93c5fd'},
+  'barista 3':{lb:'#ede9fe',lf:'#4c1d95',db:'rgba(167,139,250,0.18)',df:'#c4b5fd'},
+  'manager'  :{lb:'#fef9c3',lf:'#713f12',db:'rgba(251,191,36,0.18)',df:'#fde047'},
+  'all staff':{lb:'#ffe4e6',lf:'#881337',db:'rgba(251,113,133,0.18)',df:'#fda4af'},
 };
+const SEC_DEFS = [
+  {kw:['switch on','wash hands','uniform','previous night','sweep','mop','wipe all','washroom','check all'],icon:'◎',name:'Before Opening'},
+  {kw:['purge','test shot','grind','steam wand','hopper','dial in','milk in bar','syrup','cups at bar','lids','ice','cold brew','whip cream','batch brew'],icon:'◈',name:'Espresso Bar'},
+  {kw:['bakery','delivery','date-label','fridge temp','expire','display cabinet','cabinet','condiment','pastry','baked','style'],icon:'◇',name:'Cabinet & Pastries'},
+  {kw:['float','pos','card machine','printer roll','brief','specials board','walk the full','music','unlock','flip sign'],icon:'◉',name:'Till & Operations'},
+  {kw:['running down','run down','pre-wipe','last hour','stock down'],icon:'◎',name:'Last Hour'},
+  {kw:['last customer','lock front','closed','stop music'],icon:'◈',name:'After Last Customer'},
+  {kw:['backflush','portafilter','steam wand','drip tray','grinder','standby','blender','machine'],icon:'◇',name:'Machine Clean'},
+  {kw:['closing','remaining pastry','expired','wrap','fridge temperature','freezer','syrups','milks','dairy','order list','supplier'],icon:'◉',name:'Food & Orders'},
+  {kw:['bar surface','table','chair','menu board','sweep entire','mop entire','sanitise washroom','bins','bin liner','cloths'],icon:'◎',name:'Surfaces & Floor'},
+  {kw:['cash','till','reconcile','float','pos','sales report','void','incident'],icon:'◈',name:'Cash & Reports'},
+  {kw:['appliance','gas','visual check','non-essential light','window','back door','alarm','front door','lock up','final'],icon:'◇',name:'Lock Up'},
+];
 
-function getWhoColor(who) {
-  return WHO_COLORS[who.toLowerCase()] || {lb:'#f3f4f6',lf:'#374151',db:'rgba(255,255,255,0.12)',df:'rgba(255,255,255,0.75)'};
-}
-
-function getPriClass(p) {
-  if (p.includes('CRITICAL')) return 'p-red';
-  if (p.includes('HIGH')) return 'p-amb';
-  return 'p-grn';
-}
-
-function getPriLabel(p) {
-  return p.replace('CRITICAL','Critical').replace('HIGH','High').replace('NORMAL','Normal');
-}
-
-const SEC_ICONS = {'Before Opening':'◎','Espresso Bar':'◈','Cabinet & Pastries':'◇','Till & Operations':'◉','Last Hour':'◎','After Last Customer':'◈','Machine Clean':'◇','Food & Orders':'◉','Surfaces & Floor':'◎','Cash & Reports':'◈','Lock Up':'◇'};
+function getWC(who){return WHO_COLORS[who.toLowerCase()]||{lb:'#f3f4f6',lf:'#374151',db:'rgba(255,255,255,0.12)',df:'rgba(255,255,255,0.75)'};}
+function detectSec(t){const tl=t.task.toLowerCase()+' '+(t.tip||'').toLowerCase();for(const d of SEC_DEFS){if(d.kw.some(k=>tl.includes(k)))return d;}return{icon:'◉',name:t.who||'Tasks'};}
 
 function buildTasksHTML(tasks, panel) {
-  const sections = {};
-  tasks.forEach((t, i) => {
-    if (!sections[t.section]) sections[t.section] = [];
-    sections[t.section].push({...t, idx: panel + '_' + i});
-  });
-
-  let html = '';
-  let globalIdx = 0;
-  Object.entries(sections).forEach(([secName, items], si) => {
-    const icon = SEC_ICONS[secName] || '◉';
-    html += `<div class="sec" id="sec-${panel}-${si}">
-      <div class="sec-head">
-        <span class="sec-icon">${icon}</span>
-        <span class="sec-name">${secName}</span>
-        <span class="sec-count" id="sc-${panel}-${si}">0 / ${items.length}</span>
-      </div>
-      <div class="task-list">`;
-    items.forEach(t => {
-      const idx = globalIdx++;
-      const wc = getWhoColor(t.who);
-      const priClass = getPriClass(t.priority);
-      const priLabel = getPriLabel(t.priority);
-      html += `<div class="task" data-idx="${idx}" data-si="${si}" data-panel="${panel}"
-        data-wlb="${wc.lb}" data-wlf="${wc.lf}" data-wdb="${wc.db}" data-wdf="${wc.df}"
-        onclick="tap(this)">
-        <div class="task-check"></div>
-        <div class="task-body">
-          <div class="task-meta">
-            <span class="who-tag" data-lb="${wc.lb}" data-lf="${wc.lf}" data-db="${wc.db}" data-df="${wc.df}">${t.who}</span>
-            <span class="pri-tag ${priClass}">${priLabel}</span>
-          </div>
-          <div class="task-name">${t.task}</div>
-          ${t.tip ? `<div class="task-tip">${t.tip}</div>` : ''}
-        </div>
-      </div>`;
+  const sections=[];let cur=null;
+  tasks.forEach(t=>{const s=detectSec(t);if(!cur||cur.name!==s.name){cur={icon:s.icon,name:s.name,tasks:[]};sections.push(cur);}cur.tasks.push(t);});
+  let html='',gi=0;
+  sections.forEach((sec,si)=>{
+    html+=`<div class="sec" id="sec-${panel}-${si}"><div class="sec-head"><span class="sec-icon">${sec.icon}</span><span class="sec-name">${sec.name}</span><span class="sec-count" id="sc-${panel}-${si}">0 / ${sec.tasks.length}</span></div><div class="task-list">`;
+    sec.tasks.forEach(t=>{
+      const idx=gi++,wc=getWC(t.who);
+      const pri=t.priority.includes('CRITICAL')?'p-red':t.priority.includes('HIGH')?'p-amb':'p-grn';
+      const priLabel=t.priority.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','');
+      html+=`<div class="task" data-idx="${idx}" data-si="${si}" data-panel="${panel}" onclick="tap(this)"><div class="task-check"></div><div class="task-body"><div class="task-meta"><span class="who-tag" data-lb="${wc.lb}" data-lf="${wc.lf}" data-db="${wc.db}" data-df="${wc.df}">${t.who}</span><span class="pri-tag ${pri}">${priLabel}</span></div><div class="task-name">${t.task}</div>${t.tip?`<div class="task-tip">${t.tip}</div>`:''}</div></div>`;
     });
-    html += `</div></div>`;
+    html+=`</div></div>`;
   });
   return html;
 }
 
-function applyWhoColors() {
-  const isDark = document.body.classList.contains('dark');
-  document.querySelectorAll('.who-tag').forEach(el => {
-    el.style.background = isDark ? el.dataset.db : el.dataset.lb;
-    el.style.color      = isDark ? el.dataset.df : el.dataset.lf;
-    el.style.borderColor= isDark ? el.dataset.db : el.dataset.lb;
-  });
+function applyWhoColors(){
+  const isDark=document.body.classList.contains('dark');
+  document.querySelectorAll('.who-tag').forEach(el=>{el.style.background=isDark?el.dataset.db:el.dataset.lb;el.style.color=isDark?el.dataset.df:el.dataset.lf;el.style.borderColor=isDark?el.dataset.db:el.dataset.lb;});
 }
 
-// ═══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════
+//  🌐  LOAD TASKS FROM GOOGLE SHEET
+// ══════════════════════════════════════════════
+let O_TOTAL=0,C_TOTAL=0;
+
+async function loadTasks(){
+  document.getElementById('loadingScreen').classList.remove('hidden');
+  document.getElementById('errorScreen').classList.remove('show');
+  document.getElementById('mainApp').style.display='none';
+  try{
+    const res=await fetch(SCRIPT_URL+'?action=getTasks');
+    const data=await res.json();
+    document.getElementById('cafeName').textContent=data.cafeName||'Heebee Coffee';
+    document.title=data.cafeName||'Heebee Coffee';
+    const brOpts=(data.branches||['Main Café']).map(b=>`<option value="${b}">${b}</option>`).join('');
+    document.getElementById('brO').innerHTML=brOpts;
+    document.getElementById('brC').innerHTML=brOpts;
+    O_TOTAL=data.openingTasks.length;
+    C_TOTAL=data.closingTasks.length;
+    document.getElementById('openTasksContainer').innerHTML=buildTasksHTML(data.openingTasks,'open');
+    document.getElementById('closeTasksContainer').innerHTML=buildTasksHTML(data.closingTasks,'close');
+    document.getElementById('loadingScreen').classList.add('hidden');
+    document.getElementById('mainApp').style.display='block';
+    const t=nowT();
+    document.getElementById('tmO').value=t;
+    document.getElementById('tmC').value=t;
+    applyWhoColors();
+  }catch(err){
+    document.getElementById('loadingScreen').classList.add('hidden');
+    document.getElementById('errorScreen').classList.add('show');
+  }
+}
+
+// ══════════════════════════════════════════════
 //  🔁  INTERACTION
-// ═══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════
+const checked={open:{},close:{}};const starts={open:Date.now(),close:Date.now()};
+let currentTab='open';
 
-const checked = {open:{}, close:{}};
-const starts  = {open:Date.now(), close:Date.now()};
-let currentTab = 'open';
+function sw(t){if(t===currentTab)return;const leaving=currentTab;currentTab=t;const isO=t==='open';document.body.classList.remove('light','dark');document.body.classList.add(isO?'light':'dark');setTimeout(applyWhoColors,50);document.getElementById('tabO').className='tab'+(isO?' active-tab':'');document.getElementById('tabC').className='tab'+(!isO?' active-tab':'');const ep=document.getElementById(leaving==='open'?'panelO':'panelC');const np=document.getElementById(isO?'panelO':'panelC');ep.classList.remove('active');ep.classList.add('exit');ep.style.display='block';setTimeout(()=>{ep.style.display='none';ep.classList.remove('exit');np.classList.add('active');np.style.display='block';},280);starts[t]=Date.now();}
 
-const O_TOTAL = OPENING_TASKS.length;
-const C_TOTAL = CLOSING_TASKS.length;
+function tap(el){const p=el.dataset.panel,idx=el.dataset.idx;checked[p][idx]=!checked[p][idx];const done=checked[p][idx];el.classList.toggle('done',done);el.querySelector('.task-check').textContent=done?'✓':'';if(done)burst(el);ring(p);badges(p);}
 
-function sw(t) {
-  if (t === currentTab) return;
-  const leaving = currentTab;
-  currentTab = t;
-  const isO = t === 'open';
-  document.body.classList.remove('light','dark');
-  document.body.classList.add(isO ? 'light' : 'dark');
-  setTimeout(applyWhoColors, 50);
-  document.getElementById('tabO').className = 'tab' + (isO ? ' active-tab' : '');
-  document.getElementById('tabC').className = 'tab' + (!isO ? ' active-tab' : '');
-  const exitPanel  = document.getElementById(leaving==='open' ? 'panelO' : 'panelC');
-  const enterPanel = document.getElementById(isO ? 'panelO' : 'panelC');
-  exitPanel.classList.remove('active');
-  exitPanel.classList.add('exit');
-  exitPanel.style.display = 'block';
-  setTimeout(() => {
-    exitPanel.style.display = 'none';
-    exitPanel.classList.remove('exit');
-    enterPanel.classList.add('active');
-    enterPanel.style.display = 'block';
-  }, 280);
-  starts[t] = Date.now();
-}
+const POPS=['✦','✧','◇','◈','◉','✸','✺','·'];
+function burst(el){for(let i=0;i<3;i++){const b=document.createElement('div');b.className='burst';b.textContent=POPS[Math.floor(Math.random()*POPS.length)];b.style.left=(15+Math.random()*70)+'%';b.style.top=(15+Math.random()*70)+'%';b.style.animationDelay=(i*.07)+'s';el.appendChild(b);setTimeout(()=>b.remove(),650+i*70);}}
 
-function tap(el) {
-  const p = el.dataset.panel, idx = el.dataset.idx;
-  checked[p][idx] = !checked[p][idx];
-  const done = checked[p][idx];
-  el.classList.toggle('done', done);
-  el.querySelector('.task-check').textContent = done ? '✓' : '';
-  if (done) burst(el);
-  ring(p); badges(p);
-}
+function ring(p){const isO=p==='open',tot=isO?O_TOTAL:C_TOTAL;const done=Object.values(checked[p]).filter(Boolean).length;const pct=tot?Math.round(done/tot*100):0;const c=188.5,off=c-(c*pct/100);if(isO){document.getElementById('rfO').style.strokeDashoffset=off;document.getElementById('rpO').textContent=pct+'%';document.getElementById('doneO').classList.toggle('show',done===tot&&tot>0);}else{document.getElementById('rfC').style.strokeDashoffset=off;document.getElementById('rpC').textContent=pct+'%';document.getElementById('doneC').classList.toggle('show',done===tot&&tot>0);}}
 
-const POPS = ['✦','✧','◇','◈','◉','✸','✺','·'];
-function burst(el) {
-  for (let i = 0; i < 3; i++) {
-    const b = document.createElement('div');
-    b.className = 'burst';
-    b.textContent = POPS[Math.floor(Math.random() * POPS.length)];
-    b.style.left = (15 + Math.random() * 70) + '%';
-    b.style.top  = (15 + Math.random() * 70) + '%';
-    b.style.animationDelay = (i * .07) + 's';
-    el.appendChild(b);
-    setTimeout(() => b.remove(), 650 + i * 70);
-  }
-}
+function badges(p){document.getElementById(p==='open'?'panelO':'panelC').querySelectorAll('.sec').forEach(sec=>{const items=sec.querySelectorAll('.task');const d=Array.from(items).filter(i=>i.classList.contains('done')).length;const sc=sec.querySelector('.sec-count');if(sc)sc.textContent=d+' / '+items.length;});}
 
-function ring(p) {
-  const isO = p === 'open', tot = isO ? O_TOTAL : C_TOTAL;
-  const done = Object.values(checked[p]).filter(Boolean).length;
-  const pct  = tot ? Math.round(done / tot * 100) : 0;
-  const c = 188.5, off = c - (c * pct / 100);
-  if (isO) {
-    document.getElementById('rfO').style.strokeDashoffset = off;
-    document.getElementById('rpO').textContent = pct + '%';
-    document.getElementById('doneO').classList.toggle('show', done === tot && tot > 0);
-  } else {
-    document.getElementById('rfC').style.strokeDashoffset = off;
-    document.getElementById('rpC').textContent = pct + '%';
-    document.getElementById('doneC').classList.toggle('show', done === tot && tot > 0);
-  }
-}
+function rst(p){checked[p]={};starts[p]=Date.now();document.getElementById(p==='open'?'panelO':'panelC').querySelectorAll('.task').forEach(el=>{el.classList.remove('done');el.querySelector('.task-check').textContent='';});ring(p);badges(p);const es=document.getElementById(p==='open'?'esO':'esC');es.className='email-status';es.textContent='';const btn=document.getElementById(p==='open'?'ebO':'ebC');btn.disabled=false;btn.textContent='Send '+(p==='open'?'Opening':'Closing')+' Report';}
 
-function badges(p) {
-  document.getElementById(p === 'open' ? 'panelO' : 'panelC')
-    .querySelectorAll('.sec').forEach(sec => {
-      const items = sec.querySelectorAll('.task');
-      const d = Array.from(items).filter(i => i.classList.contains('done')).length;
-      const sc = sec.querySelector('.sec-count');
-      if (sc) sc.textContent = d + ' / ' + items.length;
-    });
-}
+function collect(p){return Array.from(document.getElementById(p==='open'?'panelO':'panelC').querySelectorAll('.task')).map(el=>({task:el.querySelector('.task-name').textContent,who:el.querySelector('.who-tag')?.textContent||'',section:el.closest('.sec')?.querySelector('.sec-name')?.textContent||'',done:el.classList.contains('done'),}));}
 
-function rst(p) {
-  checked[p] = {}; starts[p] = Date.now();
-  document.getElementById(p === 'open' ? 'panelO' : 'panelC')
-    .querySelectorAll('.task').forEach(el => {
-      el.classList.remove('done');
-      el.querySelector('.task-check').textContent = '';
-    });
-  ring(p); badges(p);
-  const es = document.getElementById(p === 'open' ? 'esO' : 'esC');
-  es.className = 'email-status'; es.textContent = '';
-  const btn = document.getElementById(p === 'open' ? 'ebO' : 'ebC');
-  btn.disabled = false;
-  btn.textContent = 'Send ' + (p === 'open' ? 'Opening' : 'Closing') + ' Report';
-}
+function pad(n){return String(n).padStart(2,'0');}
+function nowT(){const d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes());}
+function today(){const d=new Date();return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();}
+function dur(p){const m=Math.floor((Date.now()-starts[p])/60000);return m<1?'< 1 min':m+' min';}
 
-function collect(p) {
-  return Array.from(
-    document.getElementById(p === 'open' ? 'panelO' : 'panelC').querySelectorAll('.task')
-  ).map(el => ({
-    task:    el.querySelector('.task-name').textContent,
-    who:     el.querySelector('.who-tag')?.textContent || '',
-    section: el.closest('.sec')?.querySelector('.sec-name')?.textContent || '',
-    done:    el.classList.contains('done'),
-  }));
-}
+async function sendReport(p){const isO=p==='open';const branch=document.getElementById(isO?'brO':'brC').value;const staff=document.getElementById(isO?'stO':'stC').value||'(not entered)';const time=document.getElementById(isO?'tmO':'tmC').value||nowT();const btn=document.getElementById(isO?'ebO':'ebC');const es=document.getElementById(isO?'esO':'esC');btn.disabled=true;btn.textContent='Sending…';es.className='email-status';es.textContent='';try{const res=await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify({shift:p,branch,staffName:staff,date:today(),time,duration:dur(p),tasks:collect(p)})});const json=await res.json();if(json.success){es.className='email-status es-ok';es.textContent='Report sent — '+json.message;btn.textContent='Sent ✓';}else throw new Error(json.error||'Unknown error');}catch(err){es.className='email-status es-err';es.textContent='Failed — '+err.message;btn.disabled=false;btn.textContent='Send '+(isO?'Opening':'Closing')+' Report';}}
 
-function pad(n) { return String(n).padStart(2, '0'); }
-function nowT() { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
-function today() { const d = new Date(); return pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear(); }
-function dur(p) { const m = Math.floor((Date.now() - starts[p]) / 60000); return m < 1 ? '< 1 min' : m + ' min'; }
-
-async function sendReport(p) {
-  const isO = p === 'open';
-  const branch = document.getElementById(isO ? 'brO' : 'brC').value;
-  const staff  = document.getElementById(isO ? 'stO' : 'stC').value || '(not entered)';
-  const time   = document.getElementById(isO ? 'tmO' : 'tmC').value || nowT();
-  const btn    = document.getElementById(isO ? 'ebO' : 'ebC');
-  const es     = document.getElementById(isO ? 'esO' : 'esC');
-  btn.disabled = true; btn.textContent = 'Sending…';
-  es.className = 'email-status'; es.textContent = '';
-  try {
-    const res = await fetch(SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify({shift:p, branch, staffName:staff, date:today(), time, duration:dur(p), tasks:collect(p)})
-    });
-    const json = await res.json();
-    if (json.success) {
-      es.className = 'email-status es-ok';
-      es.textContent = 'Report sent — ' + json.message;
-      btn.textContent = 'Sent ✓';
-    } else throw new Error(json.error || 'Unknown error');
-  } catch(err) {
-    es.className = 'email-status es-err';
-    es.textContent = 'Failed — ' + err.message;
-    btn.disabled = false;
-    btn.textContent = 'Send ' + (isO ? 'Opening' : 'Closing') + ' Report';
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  🚀  INIT
-// ═══════════════════════════════════════════════════════════
-document.getElementById('openTasksContainer').innerHTML  = buildTasksHTML(OPENING_TASKS,  'open');
-document.getElementById('closeTasksContainer').innerHTML = buildTasksHTML(CLOSING_TASKS, 'close');
-
-const t = nowT();
-document.getElementById('tmO').value = t;
-document.getElementById('tmC').value = t;
-applyWhoColors();
-
-// PWA Service Worker registration
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js')
-      .then(() => console.log('SW registered'))
-      .catch(err => console.log('SW failed:', err));
-  });
-}
+// ══════════════════════════════════════════════
+//  🚀  BOOT
+// ══════════════════════════════════════════════
+loadTasks();
+if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});}
 </script>
 </body>
 </html>
