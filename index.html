@@ -239,7 +239,30 @@ body.light .alloc-badge{background:#eff6ff;border:1px solid rgba(30,58,138,.2);c
 .am-foot{padding:14px 22px;border-top:1px solid var(--bdr2);}
 .am-close{width:100%;padding:12px;border-radius:14px;border:1px solid var(--bdr);background:transparent;color:var(--txt2);font-family:'Space Mono',monospace;font-size:.56rem;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:all .2s;}
 
-/* Phase 4 — "Assigned to me" task indicator */
+/* Phase 4.5 — Batch-select footer */
+.am-batch-foot{padding:14px 18px;border-top:1px solid var(--bdr2);display:flex;flex-direction:column;gap:10px;background:var(--bg2);}
+.am-summary{display:flex;justify-content:center;gap:14px;font-family:'Space Mono',monospace;font-size:.56rem;letter-spacing:1.5px;color:var(--txt3);}
+.am-sum-n{color:var(--txt);font-weight:400;}
+.am-sum-add{color:#4ade80;}
+.am-sum-rem{color:#f87171;}
+.am-btn-row{display:flex;gap:8px;}
+.am-cancel{flex:1;padding:13px;border-radius:14px;border:1px solid var(--bdr);background:transparent;color:var(--txt3);font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:all .2s;}
+.am-confirm{flex:2;padding:13px;border-radius:14px;border:none;background:var(--btn);color:var(--btn-fg);font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:all .2s;box-shadow:var(--shd);}
+.am-confirm:disabled{opacity:.35;cursor:not-allowed;}
+.am-confirm.sending{opacity:.7;}
+
+/* Task selection states */
+.am-task.selected .am-tick{background:var(--chk);border-color:var(--chk);color:var(--chk-fg);}
+.am-task.selected .am-tick::before{content:'✓';}
+.am-task.was-assigned .am-task-name::after{content:' · earlier';color:var(--txt3);font-style:italic;font-size:.72rem;}
+.am-task.pending-add .am-tick{background:rgba(74,222,128,.15);border-color:rgba(74,222,128,.5);color:#4ade80;}
+.am-task.pending-add .am-tick::before{content:'+';}
+.am-task.pending-rem{opacity:.55;}
+.am-task.pending-rem .am-tick{background:rgba(248,113,113,.15);border-color:rgba(248,113,113,.5);color:#f87171;}
+.am-task.pending-rem .am-tick::before{content:'−';}
+.am-task.pending-rem .am-task-name{text-decoration:line-through;}
+
+/* Phase 4.5 — "Assigned to me" task indicator */
 .task.assigned-me{position:relative;}
 .task.assigned-me::before{content:'';position:absolute;left:0;top:10%;bottom:10%;width:3px;border-radius:3px;background:linear-gradient(to bottom,#f0c040,#d4a017);}
 .assigned-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;font-family:'Space Mono',monospace;font-size:.48rem;letter-spacing:1px;margin-left:4px;}
@@ -449,8 +472,17 @@ body.light .send-hint{color:rgba(220,38,38,.4);}
       <input type="text" id="amSearch" placeholder="Search tasks..." oninput="filterAssignTasks()">
     </div>
     <div class="am-list" id="amList"></div>
-    <div class="am-foot">
-      <button class="am-close" onclick="closeAssign()">Close</button>
+    <div class="am-batch-foot">
+      <div class="am-summary" id="amSummary">
+        <span><span class="am-sum-n" id="amSumTotal">0</span> assigned</span>
+        <span>·</span>
+        <span class="am-sum-add" id="amSumAdd">+0 new</span>
+        <span class="am-sum-rem" id="amSumRem">−0 remove</span>
+      </div>
+      <div class="am-btn-row">
+        <button class="am-cancel" onclick="cancelAssign()">Cancel</button>
+        <button class="am-confirm" id="amConfirmBtn" onclick="confirmAssign()" disabled>Confirm Allocation</button>
+      </div>
     </div>
   </div>
 </div>
@@ -640,8 +672,45 @@ let checked = {}, timerState = {};
 const pad = n => String(n).padStart(2,'0');
 const nowT = () => { const d=new Date(); return pad(d.getHours())+':'+pad(d.getMinutes()); };
 const today = () => { const d=new Date(); return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear(); };
+const todayISO = () => { const d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); };
 const callGet = async p => (await fetch(SCRIPT_URL+'?'+Object.entries(p).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&'))).json();
 const callPost = async b => (await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(b)})).json();
+
+// ── STATE PERSISTENCE ──────────────────────────────────────
+function getStateKey() {
+  if (!session) return null;
+  return 'hb_state_' + session.email + '_' + todayISO() + '_' + getShift();
+}
+function saveLocalState() {
+  const key = getStateKey();
+  if (!key) return;
+  // Strip intervals from timerState before saving (intervals can't be serialized)
+  const cleanTimers = {};
+  Object.entries(timerState).forEach(([k, v]) => {
+    cleanTimers[k] = { t0: v.t0, completedAt: v.completedAt || null, taskName: v.taskName };
+  });
+  const state = { checked, timerState: cleanTimers, allAllocations };
+  try { localStorage.setItem(key, JSON.stringify(state)); } catch(e) {}
+}
+function loadLocalState() {
+  const key = getStateKey();
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+function cleanOldStates() {
+  // Remove localStorage entries from previous days
+  if (!session) return;
+  const todayPrefix = 'hb_state_' + session.email + '_' + todayISO();
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('hb_state_' + session.email + '_') && !k.startsWith(todayPrefix)) {
+      localStorage.removeItem(k);
+    }
+  }
+}
 
 // ── SESSION ────────────────────────────────────────────────
 function saveSession(data) {
@@ -792,6 +861,7 @@ function getGreeting() {
 // ── ROUTING ────────────────────────────────────────────────
 async function routeToRole() {
   if (!session) { showScreen('scrLogin'); return; }
+  cleanOldStates();
   const shift = getShift();
   if (session.role === 'Floor Manager') {
     setupFM(shift); showScreen('scrFM');
@@ -825,8 +895,25 @@ function setupFM(shift) {
   sel.innerHTML = branches.map(b=>`<option value="${b}">${b}</option>`).join('');
   if (session.branch) for(let o of sel.options) if(o.value===session.branch){o.selected=true;break;}
   const tasks = shift==='Morning' ? (appData.tasks.openingTasks||[]) : (appData.tasks.closingTasks||[]);
-  checked={};
+  // Restore persisted state
+  const saved = loadLocalState();
+  checked = (saved && saved.checked) || {};
   document.getElementById('fmTasksContainer').innerHTML = buildSections(tasks,'fm');
+  // Apply restored checked marks visually
+  Object.keys(checked).forEach(idx => {
+    if (!checked[idx]) return;
+    const el = document.querySelector(`.task[data-idx="${idx}"][data-panel="fm"]`);
+    if (el) { el.classList.add('done'); el.querySelector('.task-check').textContent='✓'; }
+  });
+  // Restore section counts
+  document.querySelectorAll('.sec-wrap').forEach(sec => {
+    const panel = sec.id.split('-')[1];
+    if (panel !== 'fm') return;
+    const items = sec.querySelectorAll('.task');
+    const done = Array.from(items).filter(i=>i.classList.contains('done')).length;
+    const sc = sec.querySelector('.sec-count');
+    if (sc) sc.textContent = done + ' / ' + items.length;
+  });
   applyWhoColors(); updateFMRing();
 }
 
@@ -837,10 +924,14 @@ async function setupBarista(shift) {
   document.getElementById('barChip').textContent = session.role;
   const tasks = shift==='Morning' ? (appData.tasks.openingTasks||[]) : (appData.tasks.closingTasks||[]);
   const role = session.role.toLowerCase();
-  // Fetch this barista's direct allocations
+  // Restore persisted state FIRST (so we have timerState + checked before render)
+  const saved = loadLocalState();
+  checked = (saved && saved.checked) || {};
+  timerState = (saved && saved.timerState) || {};
+  // Fetch this barista's direct allocations from server
   let myAllocatedTasks = new Set();
   try {
-    const res = await callGet({ action: 'getAllocations' });
+    const res = await callGet({ action: 'getAllocations', name: session.name, date: todayISO(), shift });
     const mine = (res.allocations || []).filter(a => a.assignedTo === session.name && a.status !== 'Done');
     mine.forEach(a => myAllocatedTasks.add(a.taskName));
   } catch(e) {}
@@ -850,12 +941,27 @@ async function setupBarista(shift) {
     t.who.toLowerCase()==='all staff' ||
     myAllocatedTasks.has(t.task)
   );
-  checked={}; timerState={};
   document.getElementById('barTasksContainer').innerHTML = mine.length
     ? buildSections(mine,'bar', myAllocatedTasks)
     : '<div class="empty"><span class="empty-icon">◇</span><div class="empty-title">No Tasks Assigned</div><div class="empty-msg">No tasks match your role yet.<br>Check with your Floor Manager.</div></div>';
+  // Apply restored checked marks visually
+  Object.keys(checked).forEach(idx => {
+    if (!checked[idx]) return;
+    const el = document.querySelector(`.task[data-idx="${idx}"][data-panel="bar"]`);
+    if (el) { el.classList.add('done'); el.querySelector('.task-check').textContent='✓'; }
+  });
+  // Restore timer states visually
+  restoreTimers();
+  // Restore section counts
+  document.querySelectorAll('.sec-wrap').forEach(sec => {
+    const items = sec.querySelectorAll('.task');
+    const done = Array.from(items).filter(i=>i.classList.contains('done')).length;
+    const sc = sec.querySelector('.sec-count');
+    if (sc) sc.textContent = done + ' / ' + items.length;
+  });
   applyWhoColors();
   updateBarStats(mine.length); updateBarRing();
+  saveLocalState();
 }
 
 // ── SECTION BUILDER ────────────────────────────────────────
@@ -897,7 +1003,7 @@ function buildSections(tasks, panel, allocatedSet) {
       const assignedPill = isAssigned ? '<span class="assigned-pill">✦ Assigned to You</span>' : '';
       const taskClass = isAssigned ? 'task assigned-me' : 'task';
       const timerBtns=panel==='bar'
-        ?`<div class="task-btns"><button class="t-start" id="ts-${idx}" onclick="startTask(event,${idx})">Start</button><button class="t-done" id="td-${idx}" disabled onclick="doneTask(event,${idx})">Done</button><div class="t-timer" id="tt-${idx}">—</div></div>`:'';
+        ?`<div class="task-btns" onclick="event.stopPropagation()"><button class="t-start" id="ts-${idx}" onclick="startTask(event,${idx})">Start</button><button class="t-done" id="td-${idx}" disabled onclick="doneTask(event,${idx})">Done</button><div class="t-timer" id="tt-${idx}">—</div></div>`:'';
       html+=`<div class="${taskClass}" data-idx="${idx}" data-si="${si}" data-panel="${panel}" data-pri="${pl.toLowerCase()}" onclick="tap(this)"><div class="task-check"></div><div class="task-body"><div class="task-meta"><span class="who-tag" data-lb="${wc.lb}" data-lf="${wc.lf}" data-db="${wc.db}" data-df="${wc.df}">${t.who}</span><span class="pri-tag ${pc}">${pl}</span>${assignedPill}</div><div class="task-name">${t.task}</div>${t.tip?`<div class="task-tip">${t.tip}</div>`:''} ${timerBtns}</div></div>`;
     });
     html+=`</div></div>`;
@@ -915,6 +1021,7 @@ function tap(el) {
   updateSecCount(el);
   if(panel==='fm') updateFMRing();
   if(panel==='bar') updateBarRing();
+  saveLocalState();
 }
 function updateSecCount(el) {
   const sec=document.getElementById(`sec-${el.dataset.panel}-${el.dataset.si}`);
@@ -956,33 +1063,75 @@ function updateBarStats(total){
   document.getElementById('barPending').textContent=total-done;
 }
 
-// ── TIMERS (Phase 3 — UI only; backend logging in Phase 5) ─
+// ── TIMERS (Phase 4.5 — persisted state, restores on refresh) ─
 function startTask(e,idx){
   e.stopPropagation();
-  if(timerState[idx])return;
+  if(timerState[idx] && !timerState[idx].completedAt) return; // already running
+  if(timerState[idx] && timerState[idx].completedAt) return; // already completed
   const t0=Date.now();
-  timerState[idx]={t0};
+  const taskEl = document.querySelector(`.task[data-idx="${idx}"][data-panel="bar"]`);
+  const taskName = taskEl ? taskEl.querySelector('.task-name').textContent : '';
+  timerState[idx]={t0, taskName, completedAt:null};
+  runTimerUI(idx, t0);
+  saveLocalState();
+}
+function runTimerUI(idx, t0) {
   const bs=document.getElementById('ts-'+idx), bd=document.getElementById('td-'+idx);
-  bs.disabled=true; bs.textContent='Running'; bd.disabled=false;
-  timerState[idx].int=setInterval(()=>{
+  if (bs) { bs.disabled=true; bs.textContent='Running'; }
+  if (bd) bd.disabled=false;
+  if (timerState[idx]) {
+    if (timerState[idx].int) clearInterval(timerState[idx].int);
+    timerState[idx].int=setInterval(()=>{
+      const s=Math.floor((Date.now()-t0)/1000);
+      const m=Math.floor(s/60);
+      const d=document.getElementById('tt-'+idx);
+      if(d) d.textContent=(m?m+'m ':'')+s%60+'s';
+    },1000);
+    // Immediate first tick
     const s=Math.floor((Date.now()-t0)/1000);
     const m=Math.floor(s/60);
     const d=document.getElementById('tt-'+idx);
     if(d) d.textContent=(m?m+'m ':'')+s%60+'s';
-  },1000);
+  }
 }
 function doneTask(e,idx){
   e.stopPropagation();
-  if(!timerState[idx])return;
+  if(!timerState[idx] || timerState[idx].completedAt) return;
   clearInterval(timerState[idx].int);
-  const dur=Math.floor((Date.now()-timerState[idx].t0)/1000);
+  const completedAt = Date.now();
+  const dur=Math.floor((completedAt-timerState[idx].t0)/1000);
+  timerState[idx].completedAt = completedAt;
   const m=Math.floor(dur/60);
   const d=document.getElementById('tt-'+idx);
   if(d) d.textContent='Done · '+(m?m+'m ':'')+dur%60+'s';
   const bd=document.getElementById('td-'+idx);
   if(bd){bd.disabled=true;bd.textContent='Done ✓';}
+  const bs=document.getElementById('ts-'+idx);
+  if(bs){bs.disabled=true;bs.textContent='Complete';}
+  // Mark task as done
   const task=document.querySelector(`.task[data-idx="${idx}"]`);
   if(task&&!task.classList.contains('done')) tap(task);
+  saveLocalState();
+}
+// Restore running / completed timers from persisted state
+function restoreTimers(){
+  Object.entries(timerState).forEach(([idx, ts]) => {
+    if (!ts || !ts.t0) return;
+    if (ts.completedAt) {
+      // Was completed — show Done state
+      const dur=Math.floor((ts.completedAt-ts.t0)/1000);
+      const m=Math.floor(dur/60);
+      const d=document.getElementById('tt-'+idx);
+      if(d) d.textContent='Done · '+(m?m+'m ':'')+dur%60+'s';
+      const bd=document.getElementById('td-'+idx);
+      if(bd){bd.disabled=true;bd.textContent='Done ✓';}
+      const bs=document.getElementById('ts-'+idx);
+      if(bs){bs.disabled=true;bs.textContent='Complete';}
+    } else {
+      // Was running — restart interval
+      runTimerUI(idx, ts.t0);
+    }
+  });
 }
 
 // ── FILTER ─────────────────────────────────────────────────
@@ -1019,22 +1168,17 @@ function notesTab(i,btn){
 
 // ── STAFF ──────────────────────────────────────────────────
 let allAllocations = [];
-let pendingAssigns = new Set(); // task names currently being saved (optimistic)
 async function loadStaff(){
   try{
+    const shift = getShift();
     const [staffData, allocData] = await Promise.all([
       callGet({action:'getOnlineStaff'}),
-      callGet({action:'getAllocations'})
+      callGet({action:'getAllocations', date: todayISO(), shift})
     ]);
     const staff = staffData.staff || [];
     const serverAllocs = allocData.allocations || [];
-    // MERGE server allocations with any local pending ones (don't wipe local state)
-    const serverKeys = new Set(serverAllocs.map(a => a.assignedTo + '|' + a.taskName));
-    const localPending = allAllocations.filter(a =>
-      pendingAssigns.has(a.assignedTo + '|' + a.taskName) &&
-      !serverKeys.has(a.assignedTo + '|' + a.taskName)
-    );
-    allAllocations = [...serverAllocs, ...localPending];
+    // Server is source of truth for confirmed allocations
+    allAllocations = serverAllocs;
     const list=document.getElementById('staffList');
     if(!staff.length){list.innerHTML='<div class="empty"><span class="empty-icon">◌</span><div class="empty-title">No Staff Online</div><div class="empty-msg">No one has logged in yet.</div></div>';return;}
     const avCls={'Barista 1':'av1','Barista 2':'av2','Barista 3':'av3','Floor Manager':'avfm','Barista':'av1'};
@@ -1075,43 +1219,60 @@ function updateStaffBadge(staffName) {
   });
 }
 
-// ── PHASE 4: ASSIGN TASK MODAL ─────────────────────────────
+// ── PHASE 4.5: BATCH ASSIGN MODAL ──────────────────────────
 let currentAssignTarget = null;
+let originallyAssigned = new Set(); // snapshot at modal open
+let sessionSelection = new Set();   // what FM currently wants (after taps)
+
 function openAssign(name, email, role){
   currentAssignTarget = { name, email, role };
+  // Snapshot current allocations for this person
+  originallyAssigned = new Set(
+    allAllocations
+      .filter(a => a.assignedTo === name && a.status !== 'Done')
+      .map(a => a.taskName)
+  );
+  sessionSelection = new Set(originallyAssigned); // start with current state
   document.getElementById('amStaffName').textContent = name;
   document.getElementById('amStaffRole').textContent = role;
   document.getElementById('amSearch').value = '';
   renderAssignList('');
+  updateAssignFooter();
   document.getElementById('assignOverlay').classList.add('show');
 }
-function closeAssign(){
+function cancelAssign(){
+  // Discard any unconfirmed changes
   document.getElementById('assignOverlay').classList.remove('show');
   currentAssignTarget = null;
+  originallyAssigned = new Set();
+  sessionSelection = new Set();
 }
+function closeAssign(){ cancelAssign(); }
+
 function renderAssignList(searchTerm){
   if (!currentAssignTarget) return;
   const shift = getShift();
   const tasks = shift==='Morning' ? (appData.tasks.openingTasks||[]) : (appData.tasks.closingTasks||[]);
   const term = (searchTerm||'').toLowerCase();
   const filtered = term ? tasks.filter(t => t.task.toLowerCase().includes(term) || (t.tip||'').toLowerCase().includes(term)) : tasks;
-  const assignedTaskNames = new Set(
-    allAllocations
-      .filter(a => a.assignedTo === currentAssignTarget.name && a.status !== 'Done')
-      .map(a => a.taskName)
-  );
   const list = document.getElementById('amList');
   if (!filtered.length) {
     list.innerHTML = '<div class="empty" style="padding:24px 10px;"><span class="empty-icon">◇</span><div class="empty-msg">No tasks match.</div></div>';
     return;
   }
   list.innerHTML = filtered.map((t, i) => {
-    const isAssigned = assignedTaskNames.has(t.task);
+    const wasAssigned = originallyAssigned.has(t.task);
+    const isSelected = sessionSelection.has(t.task);
+    // State classes
+    let cls = 'am-task';
+    if (wasAssigned && isSelected)       cls += ' selected was-assigned';
+    else if (wasAssigned && !isSelected) cls += ' pending-rem was-assigned';
+    else if (!wasAssigned && isSelected) cls += ' pending-add';
     const pc = t.priority.includes('CRITICAL')?'p-red':t.priority.includes('HIGH')?'p-amb':'p-grn';
     const pl = t.priority.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','');
-    const action = isAssigned ? `onclick="doRemove('${t.task.replace(/'/g,"\\'")}')"` : `onclick="doAssign('${t.task.replace(/'/g,"\\'")}', ${i})"`;
-    return `<div class="am-task ${isAssigned?'assigned':''}" ${action}>
-      <div class="am-tick">${isAssigned?'✓':''}</div>
+    const safeTask = t.task.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return `<div class="${cls}" onclick="toggleSelection('${safeTask}')">
+      <div class="am-tick"></div>
       <div class="am-task-body">
         <div class="am-task-name">${t.task}</div>
         <div class="am-task-meta"><span class="pri-tag ${pc}">${pl}</span><span class="pri-tag" style="background:transparent;color:var(--txt3);border:1px solid var(--bdr);">${t.who}</span></div>
@@ -1120,92 +1281,82 @@ function renderAssignList(searchTerm){
   }).join('');
 }
 function filterAssignTasks(){ renderAssignList(document.getElementById('amSearch').value); }
-async function doAssign(taskName, taskIdx){
-  if (!currentAssignTarget) return;
-  const shift = getShift();
-  const date = today();
-  const target = currentAssignTarget.name;
-  const key = target + '|' + taskName;
-  // Don't re-assign if already pending or assigned
-  if (pendingAssigns.has(key)) return;
-  if (allAllocations.some(a => a.assignedTo === target && a.taskName === taskName && a.status !== 'Done')) return;
-  // OPTIMISTIC: update UI immediately
-  const optimisticAlloc = { taskName, assignedTo: target, status: 'Pending', shift };
-  allAllocations.push(optimisticAlloc);
-  pendingAssigns.add(key);
+
+function toggleSelection(taskName){
+  if (sessionSelection.has(taskName)) sessionSelection.delete(taskName);
+  else sessionSelection.add(taskName);
   renderAssignList(document.getElementById('amSearch').value);
-  updateStaffBadge(target);
-  showToast('Task assigned ✓');
-  // Fire POST in background
+  updateAssignFooter();
+}
+
+function updateAssignFooter(){
+  const toAdd = [...sessionSelection].filter(t => !originallyAssigned.has(t));
+  const toRem = [...originallyAssigned].filter(t => !sessionSelection.has(t));
+  const total = sessionSelection.size;
+  document.getElementById('amSumTotal').textContent = total;
+  document.getElementById('amSumAdd').textContent = '+' + toAdd.length + ' new';
+  document.getElementById('amSumRem').textContent = '−' + toRem.length + ' remove';
+  document.getElementById('amConfirmBtn').disabled = (toAdd.length === 0 && toRem.length === 0);
+}
+
+async function confirmAssign(){
+  if (!currentAssignTarget) return;
+  const toAdd = [...sessionSelection].filter(t => !originallyAssigned.has(t));
+  const toRem = [...originallyAssigned].filter(t => !sessionSelection.has(t));
+  if (!toAdd.length && !toRem.length) return;
+  const target = currentAssignTarget.name;
+  const shift = getShift();
+  const date = todayISO();
+  const btn = document.getElementById('amConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  btn.classList.add('sending');
+  // Build payload
+  const adds = toAdd.map((tn, i) => ({ taskId: 'T' + Date.now() + '_' + i, taskName: tn }));
+  const removes = toRem.map(tn => ({ taskName: tn }));
   try {
     const res = await callPost({
-      action: 'allocateTask',
+      action: 'batchAllocate',
       date, shift,
-      taskId: 'T' + taskIdx + '_' + Date.now(),
-      taskName,
       assignedTo: target,
-      assignedBy: session.name
+      assignedBy: session.name,
+      adds, removes
     });
-    if (!res.success) {
-      // Revert
-      const idx = allAllocations.indexOf(optimisticAlloc);
-      if (idx >= 0) allAllocations.splice(idx, 1);
-      pendingAssigns.delete(key);
-      renderAssignList(document.getElementById('amSearch').value);
+    if (res.success) {
+      // Update local allAllocations
+      allAllocations = allAllocations.filter(a =>
+        !(a.assignedTo === target && toRem.includes(a.taskName))
+      );
+      toAdd.forEach(tn => {
+        allAllocations.push({ taskName: tn, assignedTo: target, status: 'Pending', shift });
+      });
       updateStaffBadge(target);
+      saveLocalState();
+      showToast(`Saved ✓ ${res.added||0} added, ${res.removed||0} removed`);
+      document.getElementById('assignOverlay').classList.remove('show');
+      currentAssignTarget = null;
+      originallyAssigned = new Set();
+      sessionSelection = new Set();
+    } else {
       showToast('Failed — ' + (res.error || 'try again'));
+      btn.disabled = false;
+      btn.textContent = 'Confirm Allocation';
+      btn.classList.remove('sending');
     }
   } catch(e) {
-    const idx = allAllocations.indexOf(optimisticAlloc);
-    if (idx >= 0) allAllocations.splice(idx, 1);
-    pendingAssigns.delete(key);
-    renderAssignList(document.getElementById('amSearch').value);
-    updateStaffBadge(target);
-    showToast('Connection error');
+    showToast('Connection error — try again');
+    btn.disabled = false;
+    btn.textContent = 'Confirm Allocation';
+    btn.classList.remove('sending');
   }
 }
-async function doRemove(taskName){
-  if (!currentAssignTarget) return;
-  const target = currentAssignTarget.name;
-  const key = target + '|' + taskName;
-  const shift = getShift();
-  const date = today();
-  // OPTIMISTIC: remove immediately
-  const removed = allAllocations.filter(a => a.taskName === taskName && a.assignedTo === target);
-  allAllocations = allAllocations.filter(a => !(a.taskName === taskName && a.assignedTo === target));
-  pendingAssigns.delete(key);
-  renderAssignList(document.getElementById('amSearch').value);
-  updateStaffBadge(target);
-  showToast('Allocation removed ✓');
-  // Fire POST in background
-  try {
-    const res = await callPost({
-      action: 'removeAllocation',
-      date, shift,
-      taskId: '',
-      taskName,
-      assignedTo: target
-    });
-    if (!res.success) {
-      // Revert
-      allAllocations.push(...removed);
-      renderAssignList(document.getElementById('amSearch').value);
-      updateStaffBadge(target);
-      showToast('Failed — ' + (res.error || 'try again'));
-    }
-  } catch(e) {
-    allAllocations.push(...removed);
-    renderAssignList(document.getElementById('amSearch').value);
-    updateStaffBadge(target);
-    showToast('Connection error');
-  }
-}
+
 function showToast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(showToast._tm);
-  showToast._tm = setTimeout(() => t.classList.remove('show'), 2200);
+  showToast._tm = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
 // ── NOTES ──────────────────────────────────────────────────
@@ -1246,9 +1397,19 @@ function confirmReset(){
   const entered=document.getElementById('resetPin').value.trim();
   const correct=String(appData.config.resetPin||'9999');
   if(entered!==correct){document.getElementById('resetErr').style.display='block';return;}
-  closeReset(); checked={}; timerState={};
+  closeReset();
+  // Stop any running timer intervals before wipe
+  Object.values(timerState).forEach(t => { if (t && t.int) clearInterval(t.int); });
+  checked={}; timerState={};
+  // Clear persisted state for this shift
+  const key = getStateKey();
+  if (key) localStorage.removeItem(key);
   document.querySelectorAll('.task').forEach(el=>{el.classList.remove('done');el.querySelector('.task-check').textContent='';el.style.display='';});
   document.querySelectorAll('[id^="sc-"]').forEach(el=>{const t=el.closest('.sec-wrap')?.querySelectorAll('.task').length||0;el.textContent='0 / '+t;});
+  // Reset timer button UI
+  document.querySelectorAll('[id^="ts-"]').forEach(b => { b.disabled=false; b.textContent='Start'; });
+  document.querySelectorAll('[id^="td-"]').forEach(b => { b.disabled=true; b.textContent='Done'; });
+  document.querySelectorAll('[id^="tt-"]').forEach(d => { d.textContent='—'; });
   if(session?.role==='Floor Manager') updateFMRing(); else updateBarRing();
 }
 
