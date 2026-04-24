@@ -211,7 +211,44 @@ body.light .avfm{background:#fef9c3;color:#713f12;}
 .assign-btn{padding:7px 12px;border-radius:8px;font-family:'Space Mono',monospace;font-size:.52rem;letter-spacing:1px;cursor:pointer;transition:all .2s ease;}
 body.dark .assign-btn{border:1px solid rgba(240,192,64,.25);background:rgba(240,192,64,.08);color:#f0c040;}
 body.light .assign-btn{border:1px solid rgba(184,134,11,.3);background:rgba(184,134,11,.06);color:#7a5500;}
+.alloc-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:10px;font-family:'Space Mono',monospace;font-size:.5rem;letter-spacing:1px;cursor:pointer;margin-right:6px;transition:all .2s;}
+body.dark .alloc-badge{background:rgba(99,179,237,.12);border:1px solid rgba(99,179,237,.25);color:#93c5fd;}
+body.light .alloc-badge{background:#eff6ff;border:1px solid rgba(30,58,138,.2);color:#1e3a8a;}
+.alloc-badge:hover{transform:scale(1.05);}
 .hint-strip{padding:9px 14px;text-align:center;font-family:'Space Mono',monospace;font-size:.52rem;color:var(--txt3);letter-spacing:1px;margin-top:6px;}
+
+/* Phase 4 — Assign modal */
+.assign-modal{background:var(--bg2);border:1px solid var(--bdr);border-radius:22px;padding:0;max-width:400px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-shadow:var(--shd2);overflow:hidden;}
+.am-head{padding:22px 22px 14px;border-bottom:1px solid var(--bdr2);}
+.am-eyebrow{font-family:'Space Mono',monospace;font-size:.5rem;letter-spacing:3px;text-transform:uppercase;color:var(--txt3);margin-bottom:6px;}
+.am-title{font-family:'Nunito Sans',sans-serif;font-weight:200;font-size:1.4rem;letter-spacing:1.5px;color:var(--txt);margin-bottom:4px;}
+.am-sub{font-family:'Space Mono',monospace;font-size:.56rem;color:var(--txt3);letter-spacing:1px;}
+.am-search{margin:12px 22px 10px;}
+.am-search input{width:100%;background:var(--inp);border:1px solid var(--inp-bdr);border-radius:10px;padding:10px 12px;color:var(--txt);font-size:.78rem;font-family:'Nunito Sans',sans-serif;outline:none;}
+.am-list{flex:1;overflow-y:auto;padding:0 12px 12px;}
+.am-task{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;border-bottom:1px solid var(--bdr2);transition:background .15s;}
+.am-task:hover{background:var(--surf2);}
+.am-task:last-child{border-bottom:none;}
+.am-task-body{flex:1;min-width:0;}
+.am-task-name{font-size:.82rem;color:var(--txt);font-weight:400;line-height:1.4;margin-bottom:4px;}
+.am-task-meta{display:flex;gap:5px;flex-wrap:wrap;}
+.am-task.assigned{opacity:.5;}
+.am-task.assigned .am-task-name::before{content:'✓ ';color:#4ade80;font-family:'Space Mono',monospace;}
+.am-tick{width:22px;height:22px;border-radius:7px;border:1.5px solid var(--inp-bdr);flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;background:var(--inp);font-size:11px;}
+.am-task.assigned .am-tick{background:var(--chk);border-color:var(--chk);color:var(--chk-fg);}
+.am-foot{padding:14px 22px;border-top:1px solid var(--bdr2);}
+.am-close{width:100%;padding:12px;border-radius:14px;border:1px solid var(--bdr);background:transparent;color:var(--txt2);font-family:'Space Mono',monospace;font-size:.56rem;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:all .2s;}
+
+/* Phase 4 — "Assigned to me" task indicator */
+.task.assigned-me{position:relative;}
+.task.assigned-me::before{content:'';position:absolute;left:0;top:10%;bottom:10%;width:3px;border-radius:3px;background:linear-gradient(to bottom,#f0c040,#d4a017);}
+.assigned-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;font-family:'Space Mono',monospace;font-size:.48rem;letter-spacing:1px;margin-left:4px;}
+body.dark .assigned-pill{background:rgba(240,192,64,.14);color:#f0c040;border:1px solid rgba(240,192,64,.25);}
+body.light .assigned-pill{background:#fef9c3;color:#7a5500;border:1px solid rgba(184,134,11,.25);}
+
+/* Toast */
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(100px);z-index:200;background:var(--bg2);border:1px solid var(--bdr);border-radius:30px;padding:12px 22px;font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:2px;color:var(--txt);box-shadow:var(--shd2);opacity:0;transition:all .35s cubic-bezier(.4,0,.2,1);pointer-events:none;}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
 
 /* Allocation */
 .alloc-card{padding:12px 14px;margin-bottom:8px;}
@@ -399,6 +436,27 @@ body.light .send-hint{color:rgba(220,38,38,.4);}
     </div>
   </div>
 </div>
+
+<!-- Phase 4 — Assign Task Modal -->
+<div class="overlay" id="assignOverlay">
+  <div class="assign-modal">
+    <div class="am-head">
+      <div class="am-eyebrow">Assign Task</div>
+      <div class="am-title" id="amStaffName">Staff Member</div>
+      <div class="am-sub" id="amStaffRole">Role</div>
+    </div>
+    <div class="am-search">
+      <input type="text" id="amSearch" placeholder="Search tasks..." oninput="filterAssignTasks()">
+    </div>
+    <div class="am-list" id="amList"></div>
+    <div class="am-foot">
+      <button class="am-close" onclick="closeAssign()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Phase 4 — Toast -->
+<div class="toast" id="toast">Task assigned ✓</div>
 
 <!-- ═══════════════ MAIN APP ═══════════════ -->
 <div class="app" id="mainApp">
@@ -732,7 +790,7 @@ function getGreeting() {
 }
 
 // ── ROUTING ────────────────────────────────────────────────
-function routeToRole() {
+async function routeToRole() {
   if (!session) { showScreen('scrLogin'); return; }
   const shift = getShift();
   if (session.role === 'Floor Manager') {
@@ -741,7 +799,7 @@ function routeToRole() {
     loadStaff();
     staffInt = setInterval(loadStaff, 30000);
   } else {
-    setupBarista(shift); showScreen('scrBarista');
+    await setupBarista(shift); showScreen('scrBarista');
   }
 }
 
@@ -773,16 +831,28 @@ function setupFM(shift) {
 }
 
 // ── BARISTA SETUP ──────────────────────────────────────────
-function setupBarista(shift) {
+async function setupBarista(shift) {
   document.getElementById('barName').textContent = session.name;
   document.getElementById('barShiftLbl').textContent = shift+' Shift';
   document.getElementById('barChip').textContent = session.role;
   const tasks = shift==='Morning' ? (appData.tasks.openingTasks||[]) : (appData.tasks.closingTasks||[]);
   const role = session.role.toLowerCase();
-  const mine = tasks.filter(t => t.who.toLowerCase()===role || t.who.toLowerCase()==='all staff');
+  // Fetch this barista's direct allocations
+  let myAllocatedTasks = new Set();
+  try {
+    const res = await callGet({ action: 'getAllocations' });
+    const mine = (res.allocations || []).filter(a => a.assignedTo === session.name && a.status !== 'Done');
+    mine.forEach(a => myAllocatedTasks.add(a.taskName));
+  } catch(e) {}
+  // Tasks belonging to this barista: role default + All Staff + explicitly allocated
+  const mine = tasks.filter(t =>
+    t.who.toLowerCase()===role ||
+    t.who.toLowerCase()==='all staff' ||
+    myAllocatedTasks.has(t.task)
+  );
   checked={}; timerState={};
   document.getElementById('barTasksContainer').innerHTML = mine.length
-    ? buildSections(mine,'bar')
+    ? buildSections(mine,'bar', myAllocatedTasks)
     : '<div class="empty"><span class="empty-icon">◇</span><div class="empty-title">No Tasks Assigned</div><div class="empty-msg">No tasks match your role yet.<br>Check with your Floor Manager.</div></div>';
   applyWhoColors();
   updateBarStats(mine.length); updateBarRing();
@@ -813,7 +883,7 @@ const WC={
 function getWC(who){ return WC[who.toLowerCase()]||{lb:'#f3f4f6',lf:'#374151',db:'rgba(255,255,255,0.12)',df:'rgba(255,255,255,0.75)'}; }
 function detectSec(t){ const tl=(t.task+' '+t.tip).toLowerCase(); for(const d of SDEFS) if(d.kw.some(k=>tl.includes(k))) return d; return {icon:'◉',name:t.who||'Tasks'}; }
 
-function buildSections(tasks, panel) {
+function buildSections(tasks, panel, allocatedSet) {
   const secs=[]; let cur=null;
   tasks.forEach(t=>{const s=detectSec(t);if(!cur||cur.name!==s.name){cur={icon:s.icon,name:s.name,tasks:[]};secs.push(cur);}cur.tasks.push(t);});
   let html=''; let gi=0;
@@ -823,9 +893,12 @@ function buildSections(tasks, panel) {
       const idx=gi++; const wc=getWC(t.who);
       const pc=t.priority.includes('CRITICAL')?'p-red':t.priority.includes('HIGH')?'p-amb':'p-grn';
       const pl=t.priority.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','');
+      const isAssigned = allocatedSet && allocatedSet.has(t.task);
+      const assignedPill = isAssigned ? '<span class="assigned-pill">✦ Assigned to You</span>' : '';
+      const taskClass = isAssigned ? 'task assigned-me' : 'task';
       const timerBtns=panel==='bar'
         ?`<div class="task-btns"><button class="t-start" id="ts-${idx}" onclick="startTask(event,${idx})">Start</button><button class="t-done" id="td-${idx}" disabled onclick="doneTask(event,${idx})">Done</button><div class="t-timer" id="tt-${idx}">—</div></div>`:'';
-      html+=`<div class="task" data-idx="${idx}" data-si="${si}" data-panel="${panel}" data-pri="${pl.toLowerCase()}" onclick="tap(this)"><div class="task-check"></div><div class="task-body"><div class="task-meta"><span class="who-tag" data-lb="${wc.lb}" data-lf="${wc.lf}" data-db="${wc.db}" data-df="${wc.df}">${t.who}</span><span class="pri-tag ${pc}">${pl}</span></div><div class="task-name">${t.task}</div>${t.tip?`<div class="task-tip">${t.tip}</div>`:''} ${timerBtns}</div></div>`;
+      html+=`<div class="${taskClass}" data-idx="${idx}" data-si="${si}" data-panel="${panel}" data-pri="${pl.toLowerCase()}" onclick="tap(this)"><div class="task-check"></div><div class="task-body"><div class="task-meta"><span class="who-tag" data-lb="${wc.lb}" data-lf="${wc.lf}" data-db="${wc.db}" data-df="${wc.df}">${t.who}</span><span class="pri-tag ${pc}">${pl}</span>${assignedPill}</div><div class="task-name">${t.task}</div>${t.tip?`<div class="task-tip">${t.tip}</div>`:''} ${timerBtns}</div></div>`;
     });
     html+=`</div></div>`;
   });
@@ -945,19 +1018,126 @@ function notesTab(i,btn){
 }
 
 // ── STAFF ──────────────────────────────────────────────────
+let allAllocations = [];
 async function loadStaff(){
   try{
-    const data=await callGet({action:'getOnlineStaff'});
-    const staff=data.staff||[];
+    const [staffData, allocData] = await Promise.all([
+      callGet({action:'getOnlineStaff'}),
+      callGet({action:'getAllocations'})
+    ]);
+    const staff = staffData.staff || [];
+    allAllocations = allocData.allocations || [];
     const list=document.getElementById('staffList');
     if(!staff.length){list.innerHTML='<div class="empty"><span class="empty-icon">◌</span><div class="empty-title">No Staff Online</div><div class="empty-msg">No one has logged in yet.</div></div>';return;}
     const avCls={'Barista 1':'av1','Barista 2':'av2','Barista 3':'av3','Floor Manager':'avfm','Barista':'av1'};
     list.innerHTML=staff.map(s=>{
       const ini=s.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
       const av=avCls[s.role]||'av1', online=s.status==='online', self=s.email===session?.email;
-      return `<div class="glass staff-card"><div class="staff-av ${av}">${ini}</div><div style="flex:1"><div class="s-name">${s.name}${self?' (You)':''}</div><div class="s-role">${s.role}</div></div><div class="online-dot ${online?'dot-on':'dot-off'}"></div>${s.role!=='Floor Manager'&&online?'<button class="assign-btn">Assign</button>':''}</div>`;
+      const myAllocs = allAllocations.filter(a => a.assignedTo === s.name && a.status !== 'Done').length;
+      const badge = myAllocs > 0 ? `<span class="alloc-badge">${myAllocs} ${myAllocs===1?'task':'tasks'}</span>` : '';
+      const assignBtn = s.role!=='Floor Manager' && online
+        ? `<button class="assign-btn" onclick="openAssign('${s.name.replace(/'/g,"\\'")}','${s.email}','${s.role}')">Assign</button>`
+        : '';
+      return `<div class="glass staff-card"><div class="staff-av ${av}">${ini}</div><div style="flex:1"><div class="s-name">${s.name}${self?' (You)':''}</div><div class="s-role">${s.role}</div></div>${badge}<div class="online-dot ${online?'dot-on':'dot-off'}"></div>${assignBtn}</div>`;
     }).join('');
   }catch(e){document.getElementById('staffList').innerHTML='<div class="empty"><span class="empty-icon">◇</span><div class="empty-title">Unavailable</div><div class="empty-msg">Could not load staff status.</div></div>';}
+}
+
+// ── PHASE 4: ASSIGN TASK MODAL ─────────────────────────────
+let currentAssignTarget = null;
+function openAssign(name, email, role){
+  currentAssignTarget = { name, email, role };
+  document.getElementById('amStaffName').textContent = name;
+  document.getElementById('amStaffRole').textContent = role;
+  document.getElementById('amSearch').value = '';
+  renderAssignList('');
+  document.getElementById('assignOverlay').classList.add('show');
+}
+function closeAssign(){
+  document.getElementById('assignOverlay').classList.remove('show');
+  currentAssignTarget = null;
+}
+function renderAssignList(searchTerm){
+  if (!currentAssignTarget) return;
+  const shift = getShift();
+  const tasks = shift==='Morning' ? (appData.tasks.openingTasks||[]) : (appData.tasks.closingTasks||[]);
+  const term = (searchTerm||'').toLowerCase();
+  const filtered = term ? tasks.filter(t => t.task.toLowerCase().includes(term) || (t.tip||'').toLowerCase().includes(term)) : tasks;
+  const assignedTaskNames = new Set(
+    allAllocations
+      .filter(a => a.assignedTo === currentAssignTarget.name && a.status !== 'Done')
+      .map(a => a.taskName)
+  );
+  const list = document.getElementById('amList');
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty" style="padding:24px 10px;"><span class="empty-icon">◇</span><div class="empty-msg">No tasks match.</div></div>';
+    return;
+  }
+  list.innerHTML = filtered.map((t, i) => {
+    const isAssigned = assignedTaskNames.has(t.task);
+    const pc = t.priority.includes('CRITICAL')?'p-red':t.priority.includes('HIGH')?'p-amb':'p-grn';
+    const pl = t.priority.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','');
+    const action = isAssigned ? `onclick="doRemove('${t.task.replace(/'/g,"\\'")}')"` : `onclick="doAssign('${t.task.replace(/'/g,"\\'")}', ${i})"`;
+    return `<div class="am-task ${isAssigned?'assigned':''}" ${action}>
+      <div class="am-tick">${isAssigned?'✓':''}</div>
+      <div class="am-task-body">
+        <div class="am-task-name">${t.task}</div>
+        <div class="am-task-meta"><span class="pri-tag ${pc}">${pl}</span><span class="pri-tag" style="background:transparent;color:var(--txt3);border:1px solid var(--bdr);">${t.who}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function filterAssignTasks(){ renderAssignList(document.getElementById('amSearch').value); }
+async function doAssign(taskName, taskIdx){
+  if (!currentAssignTarget) return;
+  const shift = getShift();
+  try {
+    const res = await callPost({
+      action: 'allocateTask',
+      taskId: 'T' + taskIdx + '_' + Date.now(),
+      taskName,
+      assignedTo: currentAssignTarget.name,
+      assignedBy: session.name,
+      shift
+    });
+    if (res.success) {
+      allAllocations.push({ taskName, assignedTo: currentAssignTarget.name, status: 'Pending', shift });
+      renderAssignList(document.getElementById('amSearch').value);
+      showToast('Task assigned ✓');
+      loadStaff();
+    } else {
+      showToast('Failed — try again');
+    }
+  } catch(e) {
+    showToast('Connection error');
+  }
+}
+async function doRemove(taskName){
+  if (!currentAssignTarget) return;
+  try {
+    const res = await callPost({
+      action: 'removeAllocation',
+      taskName,
+      assignedTo: currentAssignTarget.name
+    });
+    if (res.success) {
+      allAllocations = allAllocations.filter(a => !(a.taskName === taskName && a.assignedTo === currentAssignTarget.name));
+      renderAssignList(document.getElementById('amSearch').value);
+      showToast('Allocation removed ✓');
+      loadStaff();
+    } else {
+      showToast('Failed — try again');
+    }
+  } catch(e) {
+    showToast('Connection error');
+  }
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._tm);
+  showToast._tm = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
 // ── NOTES ──────────────────────────────────────────────────
