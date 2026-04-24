@@ -1019,6 +1019,7 @@ function notesTab(i,btn){
 
 // ── STAFF ──────────────────────────────────────────────────
 let allAllocations = [];
+let pendingAssigns = new Set(); // task names currently being saved (optimistic)
 async function loadStaff(){
   try{
     const [staffData, allocData] = await Promise.all([
@@ -1026,7 +1027,14 @@ async function loadStaff(){
       callGet({action:'getAllocations'})
     ]);
     const staff = staffData.staff || [];
-    allAllocations = allocData.allocations || [];
+    const serverAllocs = allocData.allocations || [];
+    // MERGE server allocations with any local pending ones (don't wipe local state)
+    const serverKeys = new Set(serverAllocs.map(a => a.assignedTo + '|' + a.taskName));
+    const localPending = allAllocations.filter(a =>
+      pendingAssigns.has(a.assignedTo + '|' + a.taskName) &&
+      !serverKeys.has(a.assignedTo + '|' + a.taskName)
+    );
+    allAllocations = [...serverAllocs, ...localPending];
     const list=document.getElementById('staffList');
     if(!staff.length){list.innerHTML='<div class="empty"><span class="empty-icon">◌</span><div class="empty-title">No Staff Online</div><div class="empty-msg">No one has logged in yet.</div></div>';return;}
     const avCls={'Barista 1':'av1','Barista 2':'av2','Barista 3':'av3','Floor Manager':'avfm','Barista':'av1'};
@@ -1041,6 +1049,30 @@ async function loadStaff(){
       return `<div class="glass staff-card"><div class="staff-av ${av}">${ini}</div><div style="flex:1"><div class="s-name">${s.name}${self?' (You)':''}</div><div class="s-role">${s.role}</div></div>${badge}<div class="online-dot ${online?'dot-on':'dot-off'}"></div>${assignBtn}</div>`;
     }).join('');
   }catch(e){document.getElementById('staffList').innerHTML='<div class="empty"><span class="empty-icon">◇</span><div class="empty-title">Unavailable</div><div class="empty-msg">Could not load staff status.</div></div>';}
+}
+
+// Update just the badge on a single staff card (no full re-fetch)
+function updateStaffBadge(staffName) {
+  const count = allAllocations.filter(a => a.assignedTo === staffName && a.status !== 'Done').length;
+  // Find the card by staff name text
+  document.querySelectorAll('.staff-card').forEach(card => {
+    const nameEl = card.querySelector('.s-name');
+    if (nameEl && nameEl.textContent.replace(' (You)','') === staffName) {
+      const existing = card.querySelector('.alloc-badge');
+      if (count > 0) {
+        const txt = `${count} ${count===1?'task':'tasks'}`;
+        if (existing) existing.textContent = txt;
+        else {
+          const b = document.createElement('span');
+          b.className = 'alloc-badge';
+          b.textContent = txt;
+          card.insertBefore(b, card.querySelector('.online-dot'));
+        }
+      } else if (existing) {
+        existing.remove();
+      }
+    }
+  });
 }
 
 // ── PHASE 4: ASSIGN TASK MODAL ─────────────────────────────
@@ -1091,44 +1123,80 @@ function filterAssignTasks(){ renderAssignList(document.getElementById('amSearch
 async function doAssign(taskName, taskIdx){
   if (!currentAssignTarget) return;
   const shift = getShift();
+  const date = today();
+  const target = currentAssignTarget.name;
+  const key = target + '|' + taskName;
+  // Don't re-assign if already pending or assigned
+  if (pendingAssigns.has(key)) return;
+  if (allAllocations.some(a => a.assignedTo === target && a.taskName === taskName && a.status !== 'Done')) return;
+  // OPTIMISTIC: update UI immediately
+  const optimisticAlloc = { taskName, assignedTo: target, status: 'Pending', shift };
+  allAllocations.push(optimisticAlloc);
+  pendingAssigns.add(key);
+  renderAssignList(document.getElementById('amSearch').value);
+  updateStaffBadge(target);
+  showToast('Task assigned ✓');
+  // Fire POST in background
   try {
     const res = await callPost({
       action: 'allocateTask',
+      date, shift,
       taskId: 'T' + taskIdx + '_' + Date.now(),
       taskName,
-      assignedTo: currentAssignTarget.name,
-      assignedBy: session.name,
-      shift
+      assignedTo: target,
+      assignedBy: session.name
     });
-    if (res.success) {
-      allAllocations.push({ taskName, assignedTo: currentAssignTarget.name, status: 'Pending', shift });
+    if (!res.success) {
+      // Revert
+      const idx = allAllocations.indexOf(optimisticAlloc);
+      if (idx >= 0) allAllocations.splice(idx, 1);
+      pendingAssigns.delete(key);
       renderAssignList(document.getElementById('amSearch').value);
-      showToast('Task assigned ✓');
-      loadStaff();
-    } else {
-      showToast('Failed — try again');
+      updateStaffBadge(target);
+      showToast('Failed — ' + (res.error || 'try again'));
     }
   } catch(e) {
+    const idx = allAllocations.indexOf(optimisticAlloc);
+    if (idx >= 0) allAllocations.splice(idx, 1);
+    pendingAssigns.delete(key);
+    renderAssignList(document.getElementById('amSearch').value);
+    updateStaffBadge(target);
     showToast('Connection error');
   }
 }
 async function doRemove(taskName){
   if (!currentAssignTarget) return;
+  const target = currentAssignTarget.name;
+  const key = target + '|' + taskName;
+  const shift = getShift();
+  const date = today();
+  // OPTIMISTIC: remove immediately
+  const removed = allAllocations.filter(a => a.taskName === taskName && a.assignedTo === target);
+  allAllocations = allAllocations.filter(a => !(a.taskName === taskName && a.assignedTo === target));
+  pendingAssigns.delete(key);
+  renderAssignList(document.getElementById('amSearch').value);
+  updateStaffBadge(target);
+  showToast('Allocation removed ✓');
+  // Fire POST in background
   try {
     const res = await callPost({
       action: 'removeAllocation',
+      date, shift,
+      taskId: '',
       taskName,
-      assignedTo: currentAssignTarget.name
+      assignedTo: target
     });
-    if (res.success) {
-      allAllocations = allAllocations.filter(a => !(a.taskName === taskName && a.assignedTo === currentAssignTarget.name));
+    if (!res.success) {
+      // Revert
+      allAllocations.push(...removed);
       renderAssignList(document.getElementById('amSearch').value);
-      showToast('Allocation removed ✓');
-      loadStaff();
-    } else {
-      showToast('Failed — try again');
+      updateStaffBadge(target);
+      showToast('Failed — ' + (res.error || 'try again'));
     }
   } catch(e) {
+    allAllocations.push(...removed);
+    renderAssignList(document.getElementById('amSearch').value);
+    updateStaffBadge(target);
     showToast('Connection error');
   }
 }
