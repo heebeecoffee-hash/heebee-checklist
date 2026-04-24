@@ -1,52 +1,80 @@
-// Heebee Coffee — Service Worker
-// Caches the app for offline use
+// ═══════════════════════════════════════════════════════════
+//  HEEBEE COFFEE — Service Worker v4 (Phase 4)
+//  Network-first strategy for HTML/JS to prevent stale cache
+// ═══════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'heebee-checklist-v1';
-const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  'https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@200;300;400;600&family=Space+Mono:wght@400&display=swap'
+const CACHE_VERSION = 'heebee-v4';
+const STATIC_CACHE  = 'heebee-static-v4';
+
+const STATIC_ASSETS = [
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
-// Install: cache all assets
+// Install: pre-cache only static assets (icons, manifest)
 self.addEventListener('install', event => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(STATIC_CACHE).then(cache =>
+      cache.addAll(STATIC_ASSETS).catch(() => {})
+    )
   );
 });
 
-// Activate: clear old caches
+// Activate: clean up ALL old caches from previous versions
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+        keys
+          .filter(k => k !== STATIC_CACHE && k !== CACHE_VERSION)
+          .map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())
   );
 });
 
-// Fetch: serve from cache, fall back to network
+// Fetch strategy:
+//  - index.html / root: NETWORK-FIRST (always try fresh, fallback to cache)
+//  - Static assets: CACHE-FIRST
+//  - Google Fonts: CACHE-FIRST with background revalidate
+//  - Apps Script API calls: NETWORK ONLY (never cache backend calls)
 self.addEventListener('fetch', event => {
-  // Don't intercept POST requests (email sending goes direct to network)
-  if (event.request.method === 'POST') return;
+  const url = new URL(event.request.url);
 
+  // Never cache Apps Script calls
+  if (url.hostname.includes('script.google.com') || url.hostname.includes('script.googleusercontent.com')) {
+    return; // browser handles
+  }
+
+  // Network-first for HTML (index.html, root)
+  if (event.request.mode === 'navigate' ||
+      url.pathname.endsWith('.html') ||
+      url.pathname === '/' ||
+      url.pathname.endsWith('/heebee-checklist/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(res => {
+          const copy = res.clone();
+          caches.open(CACHE_VERSION).then(c => c.put(event.request, copy));
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first for everything else (icons, manifest, fonts)
   event.respondWith(
-    caches.match(event.request)
-      .then(cached => {
-        if (cached) return cached;
-        return fetch(event.request).then(response => {
-          // Cache new successful GET responses
-          if (response && response.status === 200 && response.type === 'basic') {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-          }
-          return response;
-        });
-      })
-      .catch(() => caches.match('/index.html'))
+    caches.match(event.request).then(cached => {
+      return cached || fetch(event.request).then(res => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(STATIC_CACHE).then(c => c.put(event.request, copy));
+        }
+        return res;
+      }).catch(() => cached);
+    })
   );
 });
