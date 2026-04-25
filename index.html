@@ -627,7 +627,7 @@ body.light .send-hint{color:rgba(220,38,38,.4);}
       <div class="roster-save-row">
         <button class="roster-save" id="rosterSaveBtn" onclick="saveRoster()" disabled>Save Roster</button>
       </div>
-      <div class="roster-hint">Set who works which role · barista tasks auto-route by role</div>
+      <div class="roster-hint">Assign baristas · you're FM for this shift</div>
     </div>
 
     <!-- Staff panel -->
@@ -1382,7 +1382,14 @@ async function loadStaff(){
     const list=document.getElementById('staffList');
     if(!staff.length){list.innerHTML='<div class="empty"><span class="empty-icon">◌</span><div class="empty-title">No Staff Online</div><div class="empty-msg">No one has logged in yet.</div></div>';return;}
     const avCls={'Barista 1':'av1','Barista 2':'av2','Barista 3':'av3','Floor Manager':'avfm','Barista':'av1'};
-    list.innerHTML=staff.map(s=>{
+    // BUG 2 FIX: Sort staff — online first, then alphabetical
+    const sorted = staff.slice().sort((a,b) => {
+      const ao = a.status === 'online' ? 0 : 1;
+      const bo = b.status === 'online' ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return a.name.localeCompare(b.name);
+    });
+    list.innerHTML=sorted.map(s=>{
       const ini=s.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
       const av=avCls[s.role]||'av1', online=s.status==='online', self=s.email===session?.email;
       return `<div class="glass staff-card"><div class="staff-av ${av}">${ini}</div><div style="flex:1"><div class="s-name">${s.name}${self?' (You)':''}</div><div class="s-role">${s.role}</div></div><div class="online-dot ${online?'dot-on':'dot-off'}"></div></div>`;
@@ -1497,7 +1504,7 @@ function stopFMLivePolling() {
 }
 
 // ── PHASE 5a: ROSTER PANEL ─────────────────────────────────
-const ROSTER_ROLES = ['Barista 1', 'Barista 2', 'Barista 3', 'Floor Manager'];
+const ROSTER_ROLES = ['Barista 1', 'Barista 2', 'Barista 3'];  // FEATURE 3 FIX: FM removed
 let rosterState = {};   // { 'Barista 1': {email, name}, ... }
 let rosterDirty = false;
 let rosterOnlineStaff = [];
@@ -1601,6 +1608,8 @@ async function saveRoster() {
   const assignments = ROSTER_ROLES
     .filter(r => rosterState[r])
     .map(r => ({ role: r, email: rosterState[r].email, name: rosterState[r].name }));
+  // FEATURE 3 FIX: Auto-inject FM — current user is always the FM for this shift
+  assignments.push({ role: 'Floor Manager', email: session.email, name: session.name });
   try {
     const res = await callPost({
       action: 'setRoster',
@@ -1613,7 +1622,7 @@ async function saveRoster() {
       btn.classList.remove('sending');
       btn.textContent = 'Save Roster';
       updateRosterStatus();
-      toast('Roster saved · ' + assignments.length + ' assigned');
+      toast('Roster saved · ' + (assignments.length - 1) + ' baristas assigned');  // -1 to exclude auto-added FM
     } else {
       throw new Error(res.error || 'Save failed');
     }
