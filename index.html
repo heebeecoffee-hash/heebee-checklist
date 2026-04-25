@@ -291,6 +291,15 @@ body.light .assigned-pill{background:#fef9c3;color:#7a5500;border:1px solid rgba
 .roster-hint{font-family:'Space Mono',monospace;font-size:.5rem;letter-spacing:1.2px;color:var(--txt3);text-align:center;margin-top:10px;text-transform:uppercase;}
 .roster-empty{text-align:center;padding:30px 16px;color:var(--txt3);font-size:.78rem;}
 
+/* Phase 5b — FM live status overlay on task cards */
+.task-status{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:10px;font-family:'Space Mono',monospace;font-size:.5rem;letter-spacing:1.2px;text-transform:uppercase;margin-left:6px;}
+.task-status.s-pending{background:rgba(148,163,184,.15);color:#94a3b8;border:1px solid rgba(148,163,184,.3);}
+.task-status.s-running{background:rgba(240,192,64,.16);color:#f0c040;border:1px solid rgba(240,192,64,.4);animation:pulseAmber 1.6s ease-in-out infinite;}
+.task-status.s-done{background:rgba(74,222,128,.14);color:#4ade80;border:1px solid rgba(74,222,128,.35);}
+@keyframes pulseAmber{0%,100%{opacity:1;}50%{opacity:.6;}}
+.task-staff{font-family:'Space Mono',monospace;font-size:.48rem;letter-spacing:1px;color:var(--txt3);margin-top:3px;text-transform:uppercase;}
+.task-elapsed{font-family:'Space Mono',monospace;font-weight:400;}
+
 /* Toast */
 .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(100px);z-index:200;background:var(--bg2);border:1px solid var(--bdr);border-radius:30px;padding:12px 22px;font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:2px;color:var(--txt);box-shadow:var(--shd2);opacity:0;transition:all .35s cubic-bezier(.4,0,.2,1);pointer-events:none;}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
@@ -863,6 +872,7 @@ function clearPinUI() {
 async function doLogout() {
   if(pingInt) clearInterval(pingInt);
   if(staffInt) clearInterval(staffInt);
+  stopFMLivePolling();
   try { await callPost({action:'logout', email:session?.email}); } catch(e){}
   clearSession(); checked={}; timerState={};
   clearPinUI();
@@ -1104,17 +1114,43 @@ function updateBarStats(total){
   document.getElementById('barPending').textContent=total-done;
 }
 
-// ── TIMERS (Phase 4.5 — persisted state, restores on refresh) ─
-function startTask(e,idx){
+// ── TIMERS (Phase 5b — wired to backend, optimistic UI, rollback on failure) ─
+async function startTask(e,idx){
   e.stopPropagation();
   if(timerState[idx] && !timerState[idx].completedAt) return; // already running
   if(timerState[idx] && timerState[idx].completedAt) return; // already completed
   const t0=Date.now();
   const taskEl = document.querySelector(`.task[data-idx="${idx}"][data-panel="bar"]`);
   const taskName = taskEl ? taskEl.querySelector('.task-name').textContent : '';
-  timerState[idx]={t0, taskName, completedAt:null};
+  // Optimistic UI first
+  timerState[idx]={t0, taskName, completedAt:null, syncing:true};
   runTimerUI(idx, t0);
   saveLocalState();
+  // Fire backend
+  try {
+    const res = await callPost({
+      action: 'logTaskStart',
+      date: todayISO(),
+      shift: getShift(),
+      branch: session.branch || '',
+      staffName: session.name,
+      taskName,
+      startTime: nowT()
+    });
+    if (!res.success) throw new Error(res.error || 'Start failed');
+    timerState[idx].syncing = false;
+    saveLocalState();
+  } catch(err) {
+    // Rollback
+    if (timerState[idx] && timerState[idx].int) clearInterval(timerState[idx].int);
+    delete timerState[idx];
+    saveLocalState();
+    const bs=document.getElementById('ts-'+idx), bd=document.getElementById('td-'+idx), tt=document.getElementById('tt-'+idx);
+    if(bs){bs.disabled=false;bs.textContent='Start';}
+    if(bd){bd.disabled=true;}
+    if(tt){tt.textContent='—';}
+    toast('Start failed: ' + err.message, true);
+  }
 }
 function runTimerUI(idx, t0) {
   const bs=document.getElementById('ts-'+idx), bd=document.getElementById('td-'+idx);
@@ -1135,13 +1171,16 @@ function runTimerUI(idx, t0) {
     if(d) d.textContent=(m?m+'m ':'')+s%60+'s';
   }
 }
-function doneTask(e,idx){
+async function doneTask(e,idx){
   e.stopPropagation();
   if(!timerState[idx] || timerState[idx].completedAt) return;
+  const prevState = { ...timerState[idx] };
+  // Optimistic UI first
   clearInterval(timerState[idx].int);
   const completedAt = Date.now();
   const dur=Math.floor((completedAt-timerState[idx].t0)/1000);
   timerState[idx].completedAt = completedAt;
+  timerState[idx].syncing = true;
   const m=Math.floor(dur/60);
   const d=document.getElementById('tt-'+idx);
   if(d) d.textContent='Done · '+(m?m+'m ':'')+dur%60+'s';
@@ -1149,10 +1188,47 @@ function doneTask(e,idx){
   if(bd){bd.disabled=true;bd.textContent='Done ✓';}
   const bs=document.getElementById('ts-'+idx);
   if(bs){bs.disabled=true;bs.textContent='Complete';}
-  // Mark task as done
-  const task=document.querySelector(`.task[data-idx="${idx}"]`);
-  if(task&&!task.classList.contains('done')) tap(task);
+  // Mark task as done visually (no tap call — barista panel has no tap handler)
+  const task=document.querySelector(`.task[data-idx="${idx}"][data-panel="bar"]`);
+  if(task){
+    task.classList.add('done');
+    const chk=task.querySelector('.task-check');
+    if(chk) chk.textContent='✓';
+    checked[idx] = true;
+    updateSecCount(task);
+    updateBarRing();
+  }
   saveLocalState();
+  // Fire backend
+  try {
+    const taskName = task ? task.querySelector('.task-name').textContent : prevState.taskName;
+    const res = await callPost({
+      action: 'logTaskComplete',
+      date: todayISO(),
+      branch: session.branch || '',
+      staffName: session.name,
+      taskName,
+      completeTime: nowT()
+    });
+    if (!res.success) throw new Error(res.error || 'Complete failed');
+    timerState[idx].syncing = false;
+    saveLocalState();
+  } catch(err) {
+    // Rollback to running state
+    timerState[idx] = prevState;
+    timerState[idx].completedAt = null;
+    runTimerUI(idx, prevState.t0);
+    if(task){
+      task.classList.remove('done');
+      const chk=task.querySelector('.task-check');
+      if(chk) chk.textContent='';
+      checked[idx] = false;
+      updateSecCount(task);
+      updateBarRing();
+    }
+    saveLocalState();
+    toast('Done failed: ' + err.message, true);
+  }
 }
 // Restore running / completed timers from persisted state
 function restoreTimers(){
@@ -1196,7 +1272,12 @@ function fmTab(i,btn){
   document.getElementById('fmPanelStaff').style.display=i===1?'block':'none';
   document.getElementById('fmPanelTasks').style.display=i===2?'block':'none';
   document.getElementById('fmPanelNotes').style.display=i===3?'block':'none';
-  if(i===2) updateFMRing();
+  if(i===2) {
+    updateFMRing();
+    startFMLivePolling();
+  } else {
+    stopFMLivePolling();
+  }
 }
 
 // ── NOTES TABS ─────────────────────────────────────────────
@@ -1254,6 +1335,88 @@ function updateStaffBadge(staffName) {
       }
     }
   });
+}
+
+// ── PHASE 5b: FM LIVE STATUS OVERLAY ───────────────────────
+let fmLogsPollInt = null;
+let fmElapsedTickInt = null;
+let fmShiftLogs = [];
+
+async function loadShiftLogs() {
+  const shift = getShift();
+  try {
+    const res = await callGet({ action: 'getShiftLogs', date: todayISO(), shift });
+    fmShiftLogs = res.logs || [];
+    renderFMStatusOverlay();
+  } catch (e) {
+    // Silent fail — keep last known state
+  }
+}
+
+function renderFMStatusOverlay() {
+  // For each task card on FM Tasks panel, find matching log entry by taskName
+  document.querySelectorAll('#fmPanelTasks .task').forEach(taskEl => {
+    const nameEl = taskEl.querySelector('.task-name');
+    if (!nameEl) return;
+    const taskName = nameEl.textContent.trim();
+    const log = fmShiftLogs.find(l => l.taskName === taskName);
+    // Remove any previous status badge & staff line
+    const oldBadge = taskEl.querySelector('.task-status');
+    if (oldBadge) oldBadge.remove();
+    const oldStaff = taskEl.querySelector('.task-staff');
+    if (oldStaff) oldStaff.remove();
+    const meta = taskEl.querySelector('.task-meta');
+    const body = taskEl.querySelector('.task-body');
+    if (!meta || !body) return;
+    let badge, staffLine;
+    if (!log) {
+      badge = '<span class="task-status s-pending">Pending</span>';
+    } else if (log.completeTime) {
+      const dur = log.duration ? log.duration + 'm' : '—';
+      badge = `<span class="task-status s-done">Done · ${dur}</span>`;
+      staffLine = `<div class="task-staff">${log.staffName} · finished ${log.completeTime}</div>`;
+    } else if (log.startTime) {
+      // Running — compute elapsed from startTime (HH:MM) against now
+      const elapsed = computeElapsedFromHM(log.startTime);
+      badge = `<span class="task-status s-running" data-start="${log.startTime}"><span class="task-elapsed">${elapsed}</span></span>`;
+      staffLine = `<div class="task-staff">${log.staffName} · started ${log.startTime}</div>`;
+    } else {
+      badge = '<span class="task-status s-pending">Pending</span>';
+    }
+    meta.insertAdjacentHTML('beforeend', badge);
+    if (staffLine) body.insertAdjacentHTML('beforeend', staffLine);
+  });
+}
+
+function computeElapsedFromHM(hm) {
+  if (!hm || !hm.includes(':')) return '—';
+  const [h, m] = hm.split(':').map(Number);
+  const now = new Date();
+  let diff = (now.getHours()*60 + now.getMinutes()) - (h*60 + m);
+  if (diff < 0) diff += 1440; // crossed midnight, unlikely in shift but safe
+  if (diff < 1) return '<1m';
+  return diff + 'm';
+}
+
+function tickFMElapsed() {
+  document.querySelectorAll('#fmPanelTasks .task-status.s-running').forEach(el => {
+    const start = el.getAttribute('data-start');
+    const sp = el.querySelector('.task-elapsed');
+    if (sp && start) sp.textContent = computeElapsedFromHM(start);
+  });
+}
+
+function startFMLivePolling() {
+  if (fmLogsPollInt) clearInterval(fmLogsPollInt);
+  if (fmElapsedTickInt) clearInterval(fmElapsedTickInt);
+  loadShiftLogs(); // immediate
+  fmLogsPollInt = setInterval(loadShiftLogs, 20000);
+  fmElapsedTickInt = setInterval(tickFMElapsed, 30000);
+}
+
+function stopFMLivePolling() {
+  if (fmLogsPollInt) { clearInterval(fmLogsPollInt); fmLogsPollInt = null; }
+  if (fmElapsedTickInt) { clearInterval(fmElapsedTickInt); fmElapsedTickInt = null; }
 }
 
 // ── PHASE 5a: ROSTER PANEL ─────────────────────────────────
