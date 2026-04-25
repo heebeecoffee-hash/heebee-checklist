@@ -1373,13 +1373,13 @@ function renderFMStatusOverlay() {
       badge = '<span class="task-status s-pending">Pending</span>';
     } else if (log.completeTime) {
       const dur = log.duration ? log.duration + 'm' : '—';
-      badge = `<span class="task-status s-done">Done · ${dur}</span>`;
-      staffLine = `<div class="task-staff">${log.staffName} · finished ${log.completeTime}</div>`;
+      badge = `<span class="task-status s-done">Done</span>`;
+      staffLine = `<div class="task-staff">${log.staffName} took ${dur}</div>`;
     } else if (log.startTime) {
-      // Running — compute elapsed from startTime (HH:MM) against now
+      // Running — compute live elapsed from startTime against now
       const elapsed = computeElapsedFromHM(log.startTime);
-      badge = `<span class="task-status s-running" data-start="${log.startTime}"><span class="task-elapsed">${elapsed}</span></span>`;
-      staffLine = `<div class="task-staff">${log.staffName} · started ${log.startTime}</div>`;
+      badge = `<span class="task-status s-running" data-start="${log.startTime}">Running <span class="task-elapsed">${elapsed}</span></span>`;
+      staffLine = `<div class="task-staff">${log.staffName} · in progress</div>`;
     } else {
       badge = '<span class="task-status s-pending">Pending</span>';
     }
