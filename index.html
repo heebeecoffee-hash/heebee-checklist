@@ -873,6 +873,16 @@ async function doLogout() {
   if(pingInt) clearInterval(pingInt);
   if(staffInt) clearInterval(staffInt);
   stopFMLivePolling();
+  // Wipe today's local state so next login pulls fresh from server (no stale ticks/timers)
+  if (session) {
+    const myPrefix = 'hb_state_' + session.email + '_';
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(myPrefix)) localStorage.removeItem(k);
+    }
+    // Also nuke any leftover running timer intervals
+    Object.values(timerState).forEach(t => { if (t && t.int) clearInterval(t.int); });
+  }
   try { await callPost({action:'logout', email:session?.email}); } catch(e){}
   clearSession(); checked={}; timerState={};
   clearPinUI();
@@ -965,13 +975,12 @@ function setupFM(shift) {
 }
 
 // ── BARISTA SETUP ──────────────────────────────────────────
-// ── BARISTA SETUP ──────────────────────────────────────────
 async function setupBarista(shift) {
   document.getElementById('barName').textContent = session.name;
   document.getElementById('barShiftLbl').textContent = shift+' Shift';
   document.getElementById('barChip').textContent = session.role;
   const allTasks = shift==='Morning' ? (appData.tasks.openingTasks||[]) : (appData.tasks.closingTasks||[]);
-  // Restore persisted state FIRST
+  // Restore persisted state FIRST (covers in-progress timers across page refresh)
   const saved = loadLocalState();
   checked = (saved && saved.checked) || {};
   timerState = (saved && saved.timerState) || {};
@@ -997,7 +1006,44 @@ async function setupBarista(shift) {
   document.getElementById('barTasksContainer').innerHTML = mine.length
     ? buildSections(mine,'bar', null)
     : '<div class="empty"><span class="empty-icon">◇</span><div class="empty-title">No Tasks Assigned</div><div class="empty-msg">No tasks match your role yet.<br>Check with your Floor Manager.</div></div>';
-  // Apply restored checked marks visually
+  // Phase 5b fix: hydrate state from server Shift_Logs — server is the truth, not localStorage
+  // This handles the case where barista signs out and back in: stale localStorage from prior session is wiped,
+  // and only tasks logged on the server (started/completed) are restored.
+  try {
+    const logsRes = await callGet({ action: 'getShiftLogs', date: todayISO(), shift });
+    const myLogs = (logsRes.logs || []).filter(l => l.staffName === session.name);
+    // Build a fresh state from server logs
+    const serverChecked = {};
+    const serverTimers = {};
+    document.querySelectorAll('#scrBarista .task[data-panel="bar"]').forEach(el => {
+      const idx = el.getAttribute('data-idx');
+      const taskName = el.querySelector('.task-name').textContent.trim();
+      const log = myLogs.find(l => l.taskName === taskName);
+      if (!log) return;
+      if (log.completeTime) {
+        // Done — show completed state
+        serverChecked[idx] = true;
+        serverTimers[idx] = {
+          t0: hmToTodayMs(log.startTime),
+          completedAt: hmToTodayMs(log.completeTime),
+          taskName,
+          serverDuration: log.duration
+        };
+      } else if (log.startTime) {
+        // Running — restore live timer
+        serverTimers[idx] = {
+          t0: hmToTodayMs(log.startTime),
+          completedAt: null,
+          taskName
+        };
+      }
+    });
+    // Server wins — overwrite local state
+    checked = serverChecked;
+    timerState = serverTimers;
+    saveLocalState();
+  } catch(e) {}
+  // Apply checked marks visually
   Object.keys(checked).forEach(idx => {
     if (!checked[idx]) return;
     const el = document.querySelector(`.task[data-idx="${idx}"][data-panel="bar"]`);
@@ -1013,6 +1059,15 @@ async function setupBarista(shift) {
   applyWhoColors();
   updateBarStats(mine.length); updateBarRing();
   saveLocalState();
+}
+
+// Helper — convert "HH:MM" to today's epoch ms (used by server-truth restore)
+function hmToTodayMs(hm) {
+  if (!hm || !hm.includes(':')) return Date.now();
+  const [h, m] = hm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.getTime();
 }
 
 // ── SECTION BUILDER ────────────────────────────────────────
