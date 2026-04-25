@@ -269,6 +269,28 @@ body.light .alloc-badge{background:#eff6ff;border:1px solid rgba(30,58,138,.2);c
 body.dark .assigned-pill{background:rgba(240,192,64,.14);color:#f0c040;border:1px solid rgba(240,192,64,.25);}
 body.light .assigned-pill{background:#fef9c3;color:#7a5500;border:1px solid rgba(184,134,11,.25);}
 
+/* Phase 5a — Roster panel */
+.roster-head{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 14px;padding:0 4px;}
+.roster-title{font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:2px;color:var(--txt3);text-transform:uppercase;}
+.roster-status{font-family:'Space Mono',monospace;font-size:.55rem;letter-spacing:1.5px;}
+.roster-status.set{color:#4ade80;}
+.roster-status.unset{color:var(--txt3);}
+.roster-status.dirty{color:#f0c040;}
+.roster-slot{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:14px;background:var(--surf);border:1px solid var(--bdr);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);margin-bottom:10px;transition:all .25s;}
+.roster-slot.filled{border-color:rgba(74,222,128,0.25);}
+.roster-slot-role{flex-shrink:0;font-family:'Nunito Sans',sans-serif;font-weight:300;font-size:.82rem;color:var(--txt);min-width:96px;}
+.roster-slot-pick{flex:1;min-width:0;}
+.roster-select{width:100%;background:var(--inp);border:1px solid var(--inp-bdr);border-radius:10px;padding:9px 11px;color:var(--txt);font-size:.78rem;font-family:'Nunito Sans',sans-serif;font-weight:400;outline:none;appearance:none;-webkit-appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path fill="%23999" d="M0 0l5 6 5-6z"/></svg>');background-repeat:no-repeat;background-position:right 11px center;padding-right:28px;}
+.roster-clear{flex-shrink:0;width:30px;height:30px;border-radius:8px;border:1px solid var(--bdr);background:transparent;color:var(--txt3);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.roster-clear:hover{color:#f87171;border-color:rgba(248,113,113,.4);}
+.roster-clear:disabled{opacity:.25;cursor:not-allowed;}
+.roster-save-row{display:flex;gap:10px;margin-top:18px;}
+.roster-save{flex:1;padding:14px;border-radius:14px;border:none;background:var(--btn);color:var(--btn-fg);font-family:'Space Mono',monospace;font-size:.62rem;letter-spacing:2px;cursor:pointer;text-transform:uppercase;transition:all .25s;box-shadow:var(--shd);}
+.roster-save:disabled{opacity:.45;cursor:not-allowed;}
+.roster-save.sending{opacity:.7;}
+.roster-hint{font-family:'Space Mono',monospace;font-size:.5rem;letter-spacing:1.2px;color:var(--txt3);text-align:center;margin-top:10px;text-transform:uppercase;}
+.roster-empty{text-align:center;padding:30px 16px;color:var(--txt3);font-size:.78rem;}
+
 /* Toast */
 .toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(100px);z-index:200;background:var(--bg2);border:1px solid var(--bdr);border-radius:30px;padding:12px 22px;font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:2px;color:var(--txt);box-shadow:var(--shd2);opacity:0;transition:all .35s cubic-bezier(.4,0,.2,1);pointer-events:none;}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
@@ -559,13 +581,27 @@ body.light .send-hint{color:rgba(220,38,38,.4);}
       <div><label>Start</label><input id="fmStart" type="time"></div>
     </div>
     <div class="sub-tabs" id="fmTabsRow">
-      <button class="sub-btn active" onclick="fmTab(0,this)">Staff</button>
-      <button class="sub-btn" onclick="fmTab(1,this)">Tasks</button>
-      <button class="sub-btn" id="fmNoteBtn" onclick="fmTab(2,this)">Notes</button>
+      <button class="sub-btn active" onclick="fmTab(0,this)">Roster</button>
+      <button class="sub-btn" onclick="fmTab(1,this)">Staff</button>
+      <button class="sub-btn" onclick="fmTab(2,this)">Tasks</button>
+      <button class="sub-btn" id="fmNoteBtn" onclick="fmTab(3,this)">Notes</button>
+    </div>
+
+    <!-- Roster panel (Phase 5a — primary FM action) -->
+    <div id="fmPanelRoster">
+      <div class="roster-head">
+        <span class="roster-title" id="rosterShiftLabel">Morning Shift</span>
+        <span class="roster-status unset" id="rosterStatus">NOT SET</span>
+      </div>
+      <div id="rosterSlots"></div>
+      <div class="roster-save-row">
+        <button class="roster-save" id="rosterSaveBtn" onclick="saveRoster()" disabled>Save Roster</button>
+      </div>
+      <div class="roster-hint">Set who works which role · barista tasks auto-route by role</div>
     </div>
 
     <!-- Staff panel -->
-    <div id="fmPanelStaff">
+    <div id="fmPanelStaff" style="display:none">
       <div class="ref-row"><div class="sec-label">Online Now</div><button class="ref-btn" onclick="loadStaff()">Refresh Now</button></div>
       <div id="staffList"><div class="empty"><span class="empty-icon">◌</span><div class="empty-title">Loading</div><div class="empty-msg">Checking who's online…</div></div></div>
       <div class="glass hint-strip">Auto-refresh every 30 seconds</div>
@@ -915,34 +951,41 @@ function setupFM(shift) {
     if (sc) sc.textContent = done + ' / ' + items.length;
   });
   applyWhoColors(); updateFMRing();
+  loadRoster();
 }
 
+// ── BARISTA SETUP ──────────────────────────────────────────
 // ── BARISTA SETUP ──────────────────────────────────────────
 async function setupBarista(shift) {
   document.getElementById('barName').textContent = session.name;
   document.getElementById('barShiftLbl').textContent = shift+' Shift';
   document.getElementById('barChip').textContent = session.role;
-  const tasks = shift==='Morning' ? (appData.tasks.openingTasks||[]) : (appData.tasks.closingTasks||[]);
-  const role = session.role.toLowerCase();
-  // Restore persisted state FIRST (so we have timerState + checked before render)
+  const allTasks = shift==='Morning' ? (appData.tasks.openingTasks||[]) : (appData.tasks.closingTasks||[]);
+  // Restore persisted state FIRST
   const saved = loadLocalState();
   checked = (saved && saved.checked) || {};
   timerState = (saved && saved.timerState) || {};
-  // Fetch this barista's direct allocations from server
-  let myAllocatedTasks = new Set();
+  // Phase 5a: ask server for today's role from Roster (overrides login role for this shift)
+  let todayRole = null;
   try {
-    const res = await callGet({ action: 'getAllocations', name: session.name, date: todayISO(), shift });
-    const mine = (res.allocations || []).filter(a => a.assignedTo === session.name && a.status !== 'Done');
-    mine.forEach(a => myAllocatedTasks.add(a.taskName));
+    const res = await callGet({ action: 'getRoster', email: session.email, date: todayISO(), shift });
+    if (res && res.role) todayRole = String(res.role).toLowerCase();
   } catch(e) {}
-  // Tasks belonging to this barista: role default + All Staff + explicitly allocated
-  const mine = tasks.filter(t =>
-    t.who.toLowerCase()===role ||
-    t.who.toLowerCase()==='all staff' ||
-    myAllocatedTasks.has(t.task)
-  );
+  if (!todayRole) {
+    document.getElementById('barTasksContainer').innerHTML =
+      '<div class="empty"><span class="empty-icon">◌</span><div class="empty-title">Roster Not Set</div><div class="empty-msg">Floor Manager hasn\'t set today\'s roster yet.<br>Check back in a moment.</div><button class="ref-btn" style="margin-top:14px;" onclick="setupBarista(getShift())">Refresh</button></div>';
+    updateBarStats(0); updateBarRing();
+    return;
+  }
+  // Update chip to reflect today's role (might differ from base login role)
+  document.getElementById('barChip').textContent = todayRole.replace(/\b\w/g, c => c.toUpperCase());
+  // Filter tasks: own role + all staff
+  const mine = allTasks.filter(t => {
+    const w = t.who.toLowerCase();
+    return w === todayRole || w === 'all staff';
+  });
   document.getElementById('barTasksContainer').innerHTML = mine.length
-    ? buildSections(mine,'bar', myAllocatedTasks)
+    ? buildSections(mine,'bar', null)
     : '<div class="empty"><span class="empty-icon">◇</span><div class="empty-title">No Tasks Assigned</div><div class="empty-msg">No tasks match your role yet.<br>Check with your Floor Manager.</div></div>';
   // Apply restored checked marks visually
   Object.keys(checked).forEach(idx => {
@@ -950,9 +993,7 @@ async function setupBarista(shift) {
     const el = document.querySelector(`.task[data-idx="${idx}"][data-panel="bar"]`);
     if (el) { el.classList.add('done'); el.querySelector('.task-check').textContent='✓'; }
   });
-  // Restore timer states visually
   restoreTimers();
-  // Restore section counts
   document.querySelectorAll('.sec-wrap').forEach(sec => {
     const items = sec.querySelectorAll('.task');
     const done = Array.from(items).filter(i=>i.classList.contains('done')).length;
@@ -1004,7 +1045,7 @@ function buildSections(tasks, panel, allocatedSet) {
       const taskClass = isAssigned ? 'task assigned-me' : 'task';
       const timerBtns=panel==='bar'
         ?`<div class="task-btns" onclick="event.stopPropagation()"><button class="t-start" id="ts-${idx}" onclick="startTask(event,${idx})">Start</button><button class="t-done" id="td-${idx}" disabled onclick="doneTask(event,${idx})">Done</button><div class="t-timer" id="tt-${idx}">—</div></div>`:'';
-      html+=`<div class="${taskClass}" data-idx="${idx}" data-si="${si}" data-panel="${panel}" data-pri="${pl.toLowerCase()}" onclick="tap(this)"><div class="task-check"></div><div class="task-body"><div class="task-meta"><span class="who-tag" data-lb="${wc.lb}" data-lf="${wc.lf}" data-db="${wc.db}" data-df="${wc.df}">${t.who}</span><span class="pri-tag ${pc}">${pl}</span>${assignedPill}</div><div class="task-name">${t.task}</div>${t.tip?`<div class="task-tip">${t.tip}</div>`:''} ${timerBtns}</div></div>`;
+      html+=`<div class="${taskClass}" data-idx="${idx}" data-si="${si}" data-panel="${panel}" data-pri="${pl.toLowerCase()}"${panel==='fm'?' onclick="tap(this)"':''}><div class="task-check"></div><div class="task-body"><div class="task-meta"><span class="who-tag" data-lb="${wc.lb}" data-lf="${wc.lf}" data-db="${wc.db}" data-df="${wc.df}">${t.who}</span><span class="pri-tag ${pc}">${pl}</span>${assignedPill}</div><div class="task-name">${t.task}</div>${t.tip?`<div class="task-tip">${t.tip}</div>`:''} ${timerBtns}</div></div>`;
     });
     html+=`</div></div>`;
   });
@@ -1151,10 +1192,11 @@ function applyFilter(f,btn){
 function fmTab(i,btn){
   document.querySelectorAll('#fmTabsRow .sub-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('fmPanelStaff').style.display=i===0?'block':'none';
-  document.getElementById('fmPanelTasks').style.display=i===1?'block':'none';
-  document.getElementById('fmPanelNotes').style.display=i===2?'block':'none';
-  if(i===1) updateFMRing();
+  document.getElementById('fmPanelRoster').style.display=i===0?'block':'none';
+  document.getElementById('fmPanelStaff').style.display=i===1?'block':'none';
+  document.getElementById('fmPanelTasks').style.display=i===2?'block':'none';
+  document.getElementById('fmPanelNotes').style.display=i===3?'block':'none';
+  if(i===2) updateFMRing();
 }
 
 // ── NOTES TABS ─────────────────────────────────────────────
@@ -1185,12 +1227,7 @@ async function loadStaff(){
     list.innerHTML=staff.map(s=>{
       const ini=s.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
       const av=avCls[s.role]||'av1', online=s.status==='online', self=s.email===session?.email;
-      const myAllocs = allAllocations.filter(a => a.assignedTo === s.name && a.status !== 'Done').length;
-      const badge = myAllocs > 0 ? `<span class="alloc-badge">${myAllocs} ${myAllocs===1?'task':'tasks'}</span>` : '';
-      const assignBtn = s.role!=='Floor Manager' && online
-        ? `<button class="assign-btn" onclick="openAssign('${s.name.replace(/'/g,"\\'")}','${s.email}','${s.role}')">Assign</button>`
-        : '';
-      return `<div class="glass staff-card"><div class="staff-av ${av}">${ini}</div><div style="flex:1"><div class="s-name">${s.name}${self?' (You)':''}</div><div class="s-role">${s.role}</div></div>${badge}<div class="online-dot ${online?'dot-on':'dot-off'}"></div>${assignBtn}</div>`;
+      return `<div class="glass staff-card"><div class="staff-av ${av}">${ini}</div><div style="flex:1"><div class="s-name">${s.name}${self?' (You)':''}</div><div class="s-role">${s.role}</div></div><div class="online-dot ${online?'dot-on':'dot-off'}"></div></div>`;
     }).join('');
   }catch(e){document.getElementById('staffList').innerHTML='<div class="empty"><span class="empty-icon">◇</span><div class="empty-title">Unavailable</div><div class="empty-msg">Could not load staff status.</div></div>';}
 }
@@ -1219,7 +1256,154 @@ function updateStaffBadge(staffName) {
   });
 }
 
-// ── PHASE 4.5: BATCH ASSIGN MODAL ──────────────────────────
+// ── PHASE 5a: ROSTER PANEL ─────────────────────────────────
+const ROSTER_ROLES = ['Barista 1', 'Barista 2', 'Barista 3', 'Floor Manager'];
+let rosterState = {};   // { 'Barista 1': {email, name}, ... }
+let rosterDirty = false;
+let rosterOnlineStaff = [];
+
+async function loadRoster() {
+  const shift = getShift();
+  document.getElementById('rosterShiftLabel').textContent = shift + ' Shift';
+  // Pull current roster + online staff in parallel
+  try {
+    const [rosterRes, staffRes] = await Promise.all([
+      callGet({ action: 'getRosterAll', date: todayISO(), shift }),
+      callGet({ action: 'getOnlineStaff' })
+    ]);
+    rosterOnlineStaff = staffRes.staff || [];
+    // Hydrate state from server
+    rosterState = {};
+    (rosterRes.roster || []).forEach(r => {
+      if (ROSTER_ROLES.includes(r.role)) {
+        rosterState[r.role] = { email: r.email, name: r.name };
+      }
+    });
+    rosterDirty = false;
+    renderRoster();
+  } catch (e) {
+    document.getElementById('rosterSlots').innerHTML =
+      '<div class="roster-empty">Could not load roster. <button class="ref-btn" onclick="loadRoster()" style="margin-top:8px;">Retry</button></div>';
+  }
+}
+
+function renderRoster() {
+  const wrap = document.getElementById('rosterSlots');
+  // Build option list once — all online staff (any role can fill any slot, FM included)
+  const staffOpts = rosterOnlineStaff;
+  wrap.innerHTML = ROSTER_ROLES.map(role => {
+    const filled = !!rosterState[role];
+    const currentEmail = filled ? rosterState[role].email : '';
+    const opts = '<option value="">— Select —</option>' +
+      staffOpts.map(s => {
+        const sel = s.email === currentEmail ? ' selected' : '';
+        return `<option value="${s.email}|${s.name.replace(/"/g,'&quot;')}"${sel}>${s.name} (${s.role})</option>`;
+      }).join('');
+    return `
+      <div class="roster-slot${filled?' filled':''}">
+        <div class="roster-slot-role">${role}</div>
+        <div class="roster-slot-pick"><select class="roster-select" onchange="onRosterChange('${role}', this.value)">${opts}</select></div>
+        <button class="roster-clear" onclick="clearRosterSlot('${role}')" ${filled?'':'disabled'}>×</button>
+      </div>`;
+  }).join('');
+  updateRosterStatus();
+}
+
+function onRosterChange(role, value) {
+  if (!value) {
+    delete rosterState[role];
+  } else {
+    const [email, name] = value.split('|');
+    // Prevent same person in two slots
+    Object.keys(rosterState).forEach(r => {
+      if (r !== role && rosterState[r] && rosterState[r].email === email) {
+        delete rosterState[r];
+      }
+    });
+    rosterState[role] = { email, name };
+  }
+  rosterDirty = true;
+  renderRoster();
+}
+
+function clearRosterSlot(role) {
+  if (!rosterState[role]) return;
+  delete rosterState[role];
+  rosterDirty = true;
+  renderRoster();
+}
+
+function updateRosterStatus() {
+  const status = document.getElementById('rosterStatus');
+  const btn = document.getElementById('rosterSaveBtn');
+  const filledCount = Object.keys(rosterState).length;
+  if (rosterDirty) {
+    status.className = 'roster-status dirty';
+    status.textContent = 'UNSAVED CHANGES';
+    btn.disabled = false;
+  } else if (filledCount > 0) {
+    status.className = 'roster-status set';
+    status.textContent = `SET · ${filledCount} ASSIGNED`;
+    btn.disabled = true;
+  } else {
+    status.className = 'roster-status unset';
+    status.textContent = 'NOT SET';
+    btn.disabled = true;
+  }
+}
+
+async function saveRoster() {
+  const btn = document.getElementById('rosterSaveBtn');
+  btn.disabled = true;
+  btn.classList.add('sending');
+  btn.textContent = 'Saving…';
+  const shift = getShift();
+  const assignments = ROSTER_ROLES
+    .filter(r => rosterState[r])
+    .map(r => ({ role: r, email: rosterState[r].email, name: rosterState[r].name }));
+  try {
+    const res = await callPost({
+      action: 'setRoster',
+      date: todayISO(),
+      shift,
+      assignments
+    });
+    if (res.success) {
+      rosterDirty = false;
+      btn.classList.remove('sending');
+      btn.textContent = 'Save Roster';
+      updateRosterStatus();
+      toast('Roster saved · ' + assignments.length + ' assigned');
+    } else {
+      throw new Error(res.error || 'Save failed');
+    }
+  } catch (e) {
+    btn.classList.remove('sending');
+    btn.disabled = false;
+    btn.textContent = 'Save Roster';
+    toast('Save failed: ' + e.message, true);
+  }
+}
+
+// Lightweight toast (reused by future phases)
+function toast(msg, isErr) {
+  let t = document.getElementById('hbToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'hbToast';
+    t.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);padding:12px 22px;border-radius:14px;backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);font-family:Space Mono,monospace;font-size:.6rem;letter-spacing:1.5px;text-transform:uppercase;z-index:9999;transition:opacity .3s,transform .3s;opacity:0;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.background = isErr ? 'rgba(248,113,113,0.18)' : 'rgba(74,222,128,0.18)';
+  t.style.color = isErr ? '#f87171' : '#4ade80';
+  t.style.border = '1px solid ' + (isErr ? 'rgba(248,113,113,0.4)' : 'rgba(74,222,128,0.4)');
+  requestAnimationFrame(() => { t.style.opacity = '1'; t.style.transform = 'translateX(-50%) translateY(0)'; });
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2400);
+}
+
+// ── PHASE 4.5: BATCH ASSIGN MODAL (DORMANT — kept for Phase 6 exceptions) ──
 let currentAssignTarget = null;
 let originallyAssigned = new Set(); // snapshot at modal open
 let sessionSelection = new Set();   // what FM currently wants (after taps)
