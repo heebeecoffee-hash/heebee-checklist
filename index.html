@@ -173,6 +173,27 @@ body.light .chip-b{background:#dbeafe;border:1px solid rgba(30,58,138,.2);color:
 .sub-btn{flex:1;padding:11px 6px;border:none;border-radius:55px;cursor:pointer;font-family:'Space Mono',monospace;font-size:.54rem;letter-spacing:.5px;background:var(--tab-off);color:var(--tab-off-fg);transition:background .4s cubic-bezier(.4,0,.2,1),color .4s cubic-bezier(.4,0,.2,1),box-shadow .4s cubic-bezier(.4,0,.2,1);position:relative;text-align:center;}
 .sub-btn.active{background:var(--tab-on);color:var(--tab-on-fg);box-shadow:0 2px 12px rgba(0,0,0,.12);}
 .notif-dot{position:absolute;top:6px;right:8px;width:5px;height:5px;background:#ef4444;border-radius:50%;}
+.notif-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;background:#ef4444;color:#fff;border-radius:9px;font-family:'Space Mono',monospace;font-size:.55rem;font-weight:400;letter-spacing:.5px;margin-left:6px;vertical-align:middle;}
+
+/* Phase 6 — note card interactivity */
+.note-card{cursor:pointer;transition:all .22s;position:relative;}
+.note-card:active{transform:scale(.985);}
+.note-card.fading{opacity:.4;transform:translateX(20px);pointer-events:none;}
+.note-confirm{position:absolute;inset:0;background:var(--surf);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-radius:14px;display:none;align-items:center;justify-content:center;gap:10px;}
+.note-confirm.show{display:flex;}
+.note-confirm-q{font-family:'Space Mono',monospace;font-size:.55rem;letter-spacing:1.4px;color:var(--txt2);text-transform:uppercase;margin-right:6px;}
+.note-confirm-yes,.note-confirm-no{padding:7px 14px;border-radius:9px;border:1px solid var(--bdr);font-family:'Space Mono',monospace;font-size:.5rem;letter-spacing:1.4px;cursor:pointer;text-transform:uppercase;background:transparent;color:var(--txt);}
+.note-confirm-yes{background:rgba(74,222,128,.16);border-color:rgba(74,222,128,.4);color:#4ade80;}
+.note-read-hint{font-family:'Space Mono',monospace;font-size:.46rem;letter-spacing:1.2px;color:var(--txt3);text-transform:uppercase;margin-top:8px;}
+
+/* Phase 6 — announcement priority styling */
+.ann-card{position:relative;padding-left:18px;}
+.ann-card.ann-urgent{border-left:3px solid #ef4444;}
+.ann-card.ann-important{border-left:3px solid #f0c040;}
+.ann-card.ann-info{border-left:3px solid #60a5fa;}
+.ann-tag.at-urg{background:rgba(239,68,68,.16);color:#ef4444;border:1px solid rgba(239,68,68,.35);}
+.ann-tag.at-imp{background:rgba(240,192,64,.14);color:#f0c040;border:1px solid rgba(240,192,64,.35);}
+.ann-tag.at-inf{background:rgba(96,165,250,.14);color:#60a5fa;border:1px solid rgba(96,165,250,.35);}
 
 /* Labels, buttons, utils */
 .sec-label{font-family:'Space Mono',monospace;font-size:.52rem;letter-spacing:3px;text-transform:uppercase;color:var(--txt3);margin-bottom:10px;transition:color .4s ease;}
@@ -972,6 +993,7 @@ function setupFM(shift) {
   });
   applyWhoColors(); updateFMRing();
   loadRoster();
+  loadNotes(true);
 }
 
 // ── BARISTA SETUP ──────────────────────────────────────────
@@ -1761,35 +1783,97 @@ function showToast(msg){
   showToast._tm = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
-// ── NOTES ──────────────────────────────────────────────────
-async function loadNotes(){
+// ── NOTES (Phase 6 — count badge, tap-to-read, priority styling) ───────────
+let unreadNotesCount = 0;
+
+function setNotesBadge(n) {
+  unreadNotesCount = n;
+  const nb = document.getElementById('fmNoteBtn');
+  if (!nb) return;
+  // Remove old indicators
+  nb.querySelectorAll('.notif-dot,.notif-count').forEach(el => el.remove());
+  // Reset label to base text
+  nb.firstChild.nodeValue = 'Notes';
+  if (n > 0) {
+    const c = document.createElement('span');
+    c.className = 'notif-count';
+    c.textContent = n > 99 ? '99+' : String(n);
+    nb.appendChild(c);
+  }
+}
+
+async function loadNotes(autoOpenIfUnread){
   try{
     const data=await callGet({action:'getNotesAndAnnouncements',role:'Floor Manager'});
     const notes=data.handoverNotes||[], anns=data.announcements||[];
-    if(notes.length){const nb=document.getElementById('fmNoteBtn');if(!nb.querySelector('.notif-dot')){const d=document.createElement('span');d.className='notif-dot';nb.appendChild(d);}}
+    setNotesBadge(notes.length);
+    if (autoOpenIfUnread && notes.length > 0) {
+      const notesBtn = document.querySelector('#fmTabsRow .sub-btn:nth-child(4)');
+      if (notesBtn) fmTab(3, notesBtn);
+    }
     const tc={'Urgent':'nt-u','Machine Issue':'nt-m','General':'nt-g','Stock':'nt-g','Staff':'nt-g'};
     const cc={'Urgent':'nc-u','Machine Issue':'nc-m','General':'nc-g','Stock':'nc-g','Staff':'nc-g'};
     document.getElementById('notesHandover').innerHTML=notes.length
-      ?notes.map(n=>`<div class="note-card ${cc[n.tag]||'nc-g'}"><span class="note-tag ${tc[n.tag]||'nt-g'}">${n.tag}</span><div class="note-from">${n.fromFM} · ${n.shift} · ${n.date}</div><div class="note-text">${n.note}</div><div class="note-time">${n.status}</div></div>`).join('')
+      ?notes.map(n=>`<div class="note-card ${cc[n.tag]||'nc-g'}" data-id="${n.id}" onclick="askMarkRead(this)"><span class="note-tag ${tc[n.tag]||'nt-g'}">${n.tag}</span><div class="note-from">${n.fromFM} · ${n.shift} · ${n.date}</div><div class="note-text">${n.note}</div><div class="note-read-hint">Tap to mark as read</div><div class="note-confirm"><span class="note-confirm-q">Mark as read?</span><button class="note-confirm-yes" onclick="event.stopPropagation();confirmMarkRead(this)">Yes</button><button class="note-confirm-no" onclick="event.stopPropagation();cancelMarkRead(this)">No</button></div></div>`).join('')
       :'<div class="empty"><span class="empty-icon">✦</span><div class="empty-title">All Clear</div><div class="empty-msg">No unread handover notes.</div></div>';
-    const ap={'Important':'at-imp','Urgent':'at-urg','Info':'at-inf'};
+    const ap = {'Important':'at-imp','Urgent':'at-urg','Info':'at-inf'};
+    const ac = {'Important':'ann-important','Urgent':'ann-urgent','Info':'ann-info'};
     document.getElementById('notesBroadcast').innerHTML=anns.length
-      ?anns.map(a=>`<div class="glass ann-card"><span class="ann-tag ${ap[a.priority]||'at-inf'}">${a.priority}</span><div class="ann-title">${a.title}</div><div class="ann-body">${a.body}</div><div class="ann-meta">${a.target} · Expires ${a.expiry||'—'}</div></div>`).join('')
+      ?anns.map(a=>`<div class="glass ann-card ${ac[a.priority]||'ann-info'}"><span class="ann-tag ${ap[a.priority]||'at-inf'}">${a.priority}</span><div class="ann-title">${a.title}</div><div class="ann-body">${a.body}</div><div class="ann-meta">${a.target} · Expires ${a.expiry||'—'}</div></div>`).join('')
       :'<div class="empty"><span class="empty-icon">◇</span><div class="empty-title">No Announcements</div><div class="empty-msg">Nothing from management.</div></div>';
   }catch(e){}
+}
+
+// Tap a note → reveal confirm overlay
+function askMarkRead(card) {
+  if (card.classList.contains('fading')) return;
+  const conf = card.querySelector('.note-confirm');
+  if (conf) conf.classList.add('show');
+}
+
+// Cancel
+function cancelMarkRead(btn) {
+  const card = btn.closest('.note-card');
+  card.querySelector('.note-confirm').classList.remove('show');
+}
+
+// Confirm → fire backend, fade card, decrement badge
+async function confirmMarkRead(btn) {
+  const card = btn.closest('.note-card');
+  const id = card.getAttribute('data-id');
+  const conf = card.querySelector('.note-confirm');
+  conf.classList.remove('show');
+  card.classList.add('fading');
+  try {
+    const res = await callPost({ action: 'markNoteRead', id });
+    if (!res.success) throw new Error(res.error || 'Mark failed');
+    setTimeout(() => {
+      card.remove();
+      setNotesBadge(Math.max(0, unreadNotesCount - 1));
+      // If list emptied, show all-clear state
+      const wrap = document.getElementById('notesHandover');
+      if (wrap && !wrap.querySelector('.note-card')) {
+        wrap.innerHTML = '<div class="empty"><span class="empty-icon">✦</span><div class="empty-title">All Clear</div><div class="empty-msg">No unread handover notes.</div></div>';
+      }
+    }, 280);
+    toast('Marked as read');
+  } catch (e) {
+    card.classList.remove('fading');
+    toast('Could not mark as read', true);
+  }
 }
 
 // ── SUBMIT NOTE ────────────────────────────────────────────
 async function submitNote(){
   const text=document.getElementById('noteTA').value.trim();
-  if(!text)return;
+  if(!text){ toast('Note is empty', true); return; }
   const tag=Array.from(document.querySelectorAll('.tag-opt.sel')).map(e=>e.textContent)[0]||'General';
   try{
     await callPost({action:'submitHandoverNote',fromFM:session.name,shift:getShift(),tag,note:text});
     document.getElementById('noteTA').value='';
     document.querySelectorAll('.tag-opt').forEach(e=>e.classList.remove('sel'));
-    alert('Handover note sent ✓');
-  }catch(e){alert('Failed. Try again.');}
+    toast('Handover note sent');
+  }catch(e){ toast('Failed. Try again.', true); }
 }
 
 // ── RESET MODAL ────────────────────────────────────────────
