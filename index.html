@@ -1,1246 +1,1344 @@
-// ═══════════════════════════════════════════════════════════════════════════
-//  HEEBEE COFFEE — SHIFT SYSTEM v3  |  Google Apps Script  |  Phase 2
-//  Full backend: auth, allocations, timers, handover, announcements, auto-clean
-//  Deploy as Web App → Execute as: Me → Who has access: Anyone
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ── SHEET HELPERS ─────────────────────────────────────────────────────────────
-
-function ss()        { return SpreadsheetApp.getActiveSpreadsheet(); }
-function sh(name)    { return ss().getSheetByName(name); }
-
-// ── CONFIG ────────────────────────────────────────────────────────────────────
-
-// Reads from original "📧 Email Config" tab (unchanged)
-function getEmailConfig() {
-  const sheet = sh("📧 Email Config");
-  const cfg   = {};
-  if (!sheet) return cfg;
-  for (let r = 6; r <= 22; r++) {
-    const k = sheet.getRange(r, 1).getValue();
-    const v = sheet.getRange(r, 2).getValue();
-    if (k) cfg[String(k).trim()] = String(v).trim();
-  }
-  return cfg;
-}
-
-// Reads from new "Config" tab created in Phase 1
-function getSystemConfig() {
-  const sheet = sh("Config");
-  const cfg   = {};
-  if (!sheet) return cfg;
-  const last = sheet.getLastRow();
-  if (last < 2) return cfg;
-  const data = sheet.getRange(2, 1, last - 1, 2).getValues();
-  data.forEach(([k, v]) => {
-    if (k) cfg[String(k).trim()] = String(v).trim();
-  });
-  return cfg;
-}
-
-// Backward-compatible alias
-function getConfig() { return getEmailConfig(); }
-
-function getBranches(cfg) {
-  const branches = [];
-  ["Branch 1 Name", "Branch 2 Name", "Branch 3 Name"].forEach(k => {
-    if (cfg[k]) branches.push(cfg[k]);
-  });
-  return branches.length ? branches : ["Main Café"];
-}
-
-// ── TASKS ─────────────────────────────────────────────────────────────────────
-
-function getTasks(sheetName) {
-  const sheet = sh(sheetName);
-  if (!sheet) return [];
-  const last = sheet.getLastRow();
-  if (last < 5) return [];
-  const data = sheet.getRange(5, 1, last - 4, 6).getValues();
-  const out  = [];
-  data.forEach(([num, who, task, tip, priority, active]) => {
-    if (task && String(active).toUpperCase() === "YES") {
-      out.push({
-        num:      String(num).trim(),
-        who:      String(who).trim(),
-        task:     String(task).trim(),
-        tip:      String(tip).trim(),
-        priority: String(priority).trim(),
-      });
-    }
-  });
-  return out;
-}
-
-// ── AUTH ──────────────────────────────────────────────────────────────────────
-
-function loginUser(email, pin) {
-  const sheet = sh("Users");
-  if (!sheet) return { success: false, error: "Users sheet not found" };
-  const last = sheet.getLastRow();
-  if (last < 2) return { success: false, error: "No users found" };
-  // Cols: Name | Email | PIN | Role | Status | Branch
-  const data = sheet.getRange(2, 1, last - 1, 6).getValues();
-  for (let i = 0; i < data.length; i++) {
-    const [name, userEmail, userPin, role, , branch] = data[i];
-    if (
-      String(userEmail).trim().toLowerCase() === String(email).trim().toLowerCase() &&
-      String(userPin).trim() === String(pin).trim()
-    ) {
-      // Mark online + store last-seen timestamp in cell note
-      sheet.getRange(i + 2, 5).setValue("online");
-      sheet.getRange(i + 2, 5).setNote(new Date().toISOString());
-      return {
-        success: true,
-        name:    String(name).trim(),
-        email:   String(userEmail).trim(),
-        role:    String(role).trim(),
-        branch:  String(branch).trim()
-      };
-    }
-  }
-  return { success: false, error: "Invalid email or PIN" };
-}
-
-function logoutUser(email) {
-  const sheet = sh("Users");
-  if (!sheet) return;
-  const last = sheet.getLastRow();
-  if (last < 2) return;
-  const data = sheet.getRange(2, 1, last - 1, 2).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][1]).trim().toLowerCase() === String(email).trim().toLowerCase()) {
-      sheet.getRange(i + 2, 5).setValue("offline");
-      sheet.getRange(i + 2, 5).setNote("");
-      break;
-    }
-  }
-}
-
-function pingOnline(email) {
-  const sheet = sh("Users");
-  if (!sheet) return;
-  const last = sheet.getLastRow();
-  if (last < 2) return;
-  const data = sheet.getRange(2, 1, last - 1, 2).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][1]).trim().toLowerCase() === String(email).trim().toLowerCase()) {
-      sheet.getRange(i + 2, 5).setValue("online");
-      sheet.getRange(i + 2, 5).setNote(new Date().toISOString());
-      break;
-    }
-  }
-}
-
-// ── ONLINE STAFF ──────────────────────────────────────────────────────────────
-
-function getOnlineStaff() {
-  const sheet = sh("Users");
-  if (!sheet) return [];
-  const last = sheet.getLastRow();
-  if (last < 2) return [];
-  const data = sheet.getRange(2, 1, last - 1, 6).getValues();
-  return data.map(([name, email, , role, status, branch]) => ({
-    name:   String(name).trim(),
-    email:  String(email).trim(),
-    role:   String(role).trim(),
-    status: String(status).trim(),
-    branch: String(branch).trim()
-  }));
-}
-
-// ── ALLOCATIONS ───────────────────────────────────────────────────────────────
-
-// Normalize any date input to canonical "yyyy-MM-dd" string.
-// Handles: ISO strings, Date objects (from Sheets), DD/MM/YYYY, empty → today
-function normalizeDateStr(input) {
-  if (!input) {
-    return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
-  }
-  if (input instanceof Date) {
-    if (isNaN(input.getTime())) return "";
-    return Utilities.formatDate(input, Session.getScriptTimeZone(), "yyyy-MM-dd");
-  }
-  const s = String(input).trim();
-  if (!s) return "";
-  // Already ISO
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // DD/MM/YYYY
-  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (dmy) {
-    const d = String(dmy[1]).padStart(2, "0");
-    const m = String(dmy[2]).padStart(2, "0");
-    return dmy[3] + "-" + m + "-" + d;
-  }
-  // Try parsing as Date (handles "Fri Apr 24 2026..." from Sheets)
-  try {
-    const dt = new Date(s);
-    if (!isNaN(dt.getTime())) {
-      return Utilities.formatDate(dt, Session.getScriptTimeZone(), "yyyy-MM-dd");
-    }
-  } catch (e) {}
-  return s;
-}
-
-// Phase 5b — strip Sheets-injected date wrapper from time cells, return "HH:mm" or ""
-function formatTimeHM(input) {
-  if (!input && input !== 0) return "";
-  if (input instanceof Date) {
-    if (isNaN(input.getTime())) return "";
-    return Utilities.formatDate(input, Session.getScriptTimeZone(), "HH:mm");
-  }
-  const s = String(input).trim();
-  if (!s) return "";
-  // Already HH:mm or HH:mm:ss → take first two parts
-  const direct = s.match(/^(\d{1,2}):(\d{2})/);
-  if (direct) return String(direct[1]).padStart(2, "0") + ":" + direct[2];
-  // Sheets toString format like "Sat Dec 30 1899 21:43:10 GMT+0521 (...)"
-  const fromStr = s.match(/(\d{1,2}):(\d{2})/);
-  if (fromStr) return String(fromStr[1]).padStart(2, "0") + ":" + fromStr[2];
-  // Fallback: try Date parse
-  try {
-    const dt = new Date(s);
-    if (!isNaN(dt.getTime())) {
-      return Utilities.formatDate(dt, Session.getScriptTimeZone(), "HH:mm");
-    }
-  } catch (e) {}
-  return "";
-}
-
-// Compute duration in minutes between two "HH:mm" strings
-function diffMinutes(startHM, endHM) {
-  if (!startHM || !endHM) return "";
-  const sm = startHM.match(/^(\d{1,2}):(\d{2})/);
-  const em = endHM.match(/^(\d{1,2}):(\d{2})/);
-  if (!sm || !em) return "";
-  let mins = (Number(em[1]) * 60 + Number(em[2])) - (Number(sm[1]) * 60 + Number(sm[2]));
-  if (mins < 0) mins += 1440; // crossed midnight
-  return String(mins);
-}
-
-function allocateTask(date, shift, taskId, taskName, assignedTo, assignedBy) {
-  const sheet = sh("Allocations");
-  if (!sheet) return { success: false, error: "Allocations sheet not found" };
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim().toLowerCase();
-  const last = sheet.getLastRow();
-  if (last >= 2) {
-    const data = sheet.getRange(2, 1, last - 1, 7).getValues();
-    for (const row of data) {
-      if (
-        normalizeDateStr(row[0]) === normDate &&
-        String(row[1]).trim().toLowerCase() === normShift &&
-        String(row[3]).trim() === String(taskName).trim() &&
-        String(row[4]).trim().toLowerCase() === String(assignedTo).toLowerCase()
-      ) {
-        return { success: false, error: "Task already allocated to this person" };
-      }
-    }
-  }
-  sheet.appendRow([normDate, shift, taskId, taskName, assignedTo, assignedBy, "Pending"]);
-  return { success: true };
-}
-
-function removeAllocation(date, shift, taskId, assignedTo, taskName) {
-  const sheet = sh("Allocations");
-  if (!sheet) return { success: false };
-  const last = sheet.getLastRow();
-  if (last < 2) return { success: false };
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim().toLowerCase();
-  const data = sheet.getRange(2, 1, last - 1, 7).getValues();
-  for (let i = data.length - 1; i >= 0; i--) {
-    const rowDateMatch = normalizeDateStr(data[i][0]) === normDate;
-    const rowShiftMatch = String(data[i][1]).trim().toLowerCase() === normShift;
-    const rowTaskMatch = taskName
-      ? String(data[i][3]).trim() === String(taskName).trim()
-      : String(data[i][2]).trim() === String(taskId).trim();
-    const rowAssigneeMatch = String(data[i][4]).trim().toLowerCase() === String(assignedTo).toLowerCase();
-    if (rowDateMatch && rowShiftMatch && rowTaskMatch && rowAssigneeMatch) {
-      sheet.deleteRow(i + 2);
-      return { success: true };
-    }
-  }
-  return { success: false, error: "Allocation not found" };
-}
-
-// Batch allocate / remove in ONE call. Prevents race conditions and throttling.
-// Expects: adds = [{taskId, taskName}], removes = [{taskName}]
-function batchAllocate(date, shift, assignedTo, assignedBy, adds, removes) {
-  const sheet = sh("Allocations");
-  if (!sheet) return { success: false, error: "Allocations sheet not found" };
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim().toLowerCase();
-  const normAssignee = String(assignedTo || "").toLowerCase();
-  let added = 0, removed = 0;
-
-  // Process REMOVES first (walk bottom-up so indexes stay valid)
-  if (removes && removes.length) {
-    const last = sheet.getLastRow();
-    if (last >= 2) {
-      const data = sheet.getRange(2, 1, last - 1, 7).getValues();
-      const removeSet = {};
-      removes.forEach(r => { removeSet[String(r.taskName).trim()] = true; });
-      for (let i = data.length - 1; i >= 0; i--) {
-        if (
-          normalizeDateStr(data[i][0]) === normDate &&
-          String(data[i][1]).trim().toLowerCase() === normShift &&
-          String(data[i][4]).trim().toLowerCase() === normAssignee &&
-          removeSet[String(data[i][3]).trim()]
-        ) {
-          sheet.deleteRow(i + 2);
-          removed++;
-        }
-      }
-    }
-  }
-
-  // Re-read for ADDS (some rows may have been deleted)
-  let existingTaskNames = {};
-  const newLast = sheet.getLastRow();
-  if (newLast >= 2) {
-    const data = sheet.getRange(2, 1, newLast - 1, 7).getValues();
-    data.forEach(row => {
-      if (
-        normalizeDateStr(row[0]) === normDate &&
-        String(row[1]).trim().toLowerCase() === normShift &&
-        String(row[4]).trim().toLowerCase() === normAssignee
-      ) {
-        existingTaskNames[String(row[3]).trim()] = true;
-      }
-    });
-  }
-
-  // Process ADDS — skip duplicates
-  if (adds && adds.length) {
-    const rowsToAppend = [];
-    adds.forEach(a => {
-      const tn = String(a.taskName).trim();
-      if (!existingTaskNames[tn]) {
-        rowsToAppend.push([normDate, shift, a.taskId || "", tn, assignedTo, assignedBy, "Pending"]);
-        existingTaskNames[tn] = true;
-      }
-    });
-    if (rowsToAppend.length) {
-      // Batch insert (much faster than appendRow in a loop)
-      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 7).setValues(rowsToAppend);
-      added = rowsToAppend.length;
-    }
-  }
-
-  return { success: true, added: added, removed: removed };
-}
-
-function getAllocationsForUser(name, date, shift) {
-  const sheet = sh("Allocations");
-  if (!sheet) return [];
-  const last = sheet.getLastRow();
-  if (last < 2) return [];
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim().toLowerCase();
-  const normName = String(name || "").toLowerCase();
-  const data = sheet.getRange(2, 1, last - 1, 7).getValues();
-  return data
-    .filter(([d, s, , , assignedTo]) =>
-      (!normDate  || normalizeDateStr(d) === normDate) &&
-      (!normShift || String(s).trim().toLowerCase() === normShift) &&
-      String(assignedTo).trim().toLowerCase() === normName
-    )
-    .map(([, , taskId, taskName, assignedTo, assignedBy, status]) => ({
-      taskId:     String(taskId).trim(),
-      taskName:   String(taskName).trim(),
-      assignedTo: String(assignedTo).trim(),
-      assignedBy: String(assignedBy).trim(),
-      status:     String(status).trim()
-    }));
-}
-
-function getAllAllocations(date, shift) {
-  const sheet = sh("Allocations");
-  if (!sheet) return [];
-  const last = sheet.getLastRow();
-  if (last < 2) return [];
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim().toLowerCase();
-  const data = sheet.getRange(2, 1, last - 1, 7).getValues();
-  return data
-    .filter(([d, s]) =>
-      (!normDate  || normalizeDateStr(d) === normDate) &&
-      (!normShift || String(s).trim().toLowerCase() === normShift)
-    )
-    .map(([, , taskId, taskName, assignedTo, assignedBy, status]) => ({
-      taskId:     String(taskId).trim(),
-      taskName:   String(taskName).trim(),
-      assignedTo: String(assignedTo).trim(),
-      assignedBy: String(assignedBy).trim(),
-      status:     String(status).trim()
-    }));
-}
-
-// ── ROSTER (Phase 5a — replaces per-task allocation as primary FM action) ────
-
-// One-time setup — run from Apps Script editor once after deploy
-function setupRosterSheet() {
-  const ssRef = ss();
-  let sheet = ssRef.getSheetByName("Roster");
-  if (!sheet) {
-    sheet = ssRef.insertSheet("Roster");
-    sheet.appendRow(["Date", "Shift", "Role", "Email", "Name"]);
-    sheet.getRange("A1:E1").setFontWeight("bold").setBackground("#f5f5f7");
-    sheet.setFrozenRows(1);
-  }
-  return { success: true, message: "Roster sheet ready" };
-}
-
-// Get the role assigned to one user for one shift on one day
-function getRoster(email, date, shift) {
-  const sheet = sh("Roster");
-  if (!sheet) return { role: null };
-  const last = sheet.getLastRow();
-  if (last < 2) return { role: null };
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim().toLowerCase();
-  const normEmail = String(email || "").trim().toLowerCase();
-  const data = sheet.getRange(2, 1, last - 1, 5).getValues();
-  for (const row of data) {
-    if (
-      normalizeDateStr(row[0]) === normDate &&
-      String(row[1]).trim().toLowerCase() === normShift &&
-      String(row[3]).trim().toLowerCase() === normEmail
-    ) {
-      return { role: String(row[2]).trim(), name: String(row[4]).trim() };
-    }
-  }
-  return { role: null };
-}
-
-// Get full roster for one shift on one day (FM dashboard view)
-function getRosterAll(date, shift) {
-  const sheet = sh("Roster");
-  if (!sheet) return { roster: [] };
-  const last = sheet.getLastRow();
-  if (last < 2) return { roster: [] };
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim().toLowerCase();
-  const data = sheet.getRange(2, 1, last - 1, 5).getValues();
-  const roster = [];
-  data.forEach(row => {
-    if (
-      normalizeDateStr(row[0]) === normDate &&
-      String(row[1]).trim().toLowerCase() === normShift
-    ) {
-      roster.push({
-        role:  String(row[2]).trim(),
-        email: String(row[3]).trim(),
-        name:  String(row[4]).trim()
-      });
-    }
-  });
-  return { roster };
-}
-
-// Save full roster for one shift — wipes existing entries for that date+shift, inserts fresh
-// assignments format: [{role, email, name}, ...]
-function setRoster(date, shift, assignments) {
-  const sheet = sh("Roster");
-  if (!sheet) return { success: false, error: "Roster sheet not found — run setupRosterSheet() once" };
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim();
-  const last = sheet.getLastRow();
-
-  // Wipe existing rows for this date+shift (delete from bottom up)
-  if (last >= 2) {
-    const data = sheet.getRange(2, 1, last - 1, 5).getValues();
-    for (let i = data.length - 1; i >= 0; i--) {
-      if (
-        normalizeDateStr(data[i][0]) === normDate &&
-        String(data[i][1]).trim().toLowerCase() === normShift.toLowerCase()
-      ) {
-        sheet.deleteRow(i + 2);
-      }
-    }
-  }
-
-  // Insert fresh assignments in one batch
-  if (assignments && assignments.length) {
-    const rows = assignments
-      .filter(a => a && a.role && a.email)
-      .map(a => [normDate, normShift, String(a.role).trim(), String(a.email).trim(), String(a.name || "").trim()]);
-    if (rows.length) {
-      sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 5).setValues(rows);
-    }
-  }
-
-  return { success: true, count: assignments ? assignments.length : 0 };
-}
-
-// ── SHIFT LOGS ────────────────────────────────────────────────────────────────
-
-// BUG 1 FIX: Run ONCE — locks Shift_Logs columns to Plain Text and heals existing rows
-function fixShiftLogsFormat() {
-  const sheet = sh("Shift_Logs");
-  if (!sheet) { SpreadsheetApp.getUi().alert("Shift_Logs not found"); return; }
-
-  // Lock formats so Sheets stops auto-converting strings to Dates
-  sheet.getRange("F:F").setNumberFormat("@");  // Start Time as text
-  sheet.getRange("G:G").setNumberFormat("@");  // Complete Time as text
-  sheet.getRange("H:H").setNumberFormat("0");  // Duration as plain integer
-
-  const last = sheet.getLastRow();
-  if (last < 2) { SpreadsheetApp.getUi().alert("Formats locked. No rows to heal."); return; }
-
-  // Heal existing rows: extract HH:mm from whatever is in F/G, recompute H if bogus
-  const data = sheet.getRange(2, 1, last - 1, 8).getValues();
-  let healed = 0, dropped = 0;
-  for (let i = 0; i < data.length; i++) {
-    const startHM    = formatTimeHM(data[i][5]);
-    const completeHM = formatTimeHM(data[i][6]);
-    let durStr = String(data[i][7] || "").trim();
-
-    // Recompute duration from clean times
-    if (startHM && completeHM) {
-      const recomputed = diffMinutes(startHM, completeHM);
-      if (recomputed) {
-        const n = Number(recomputed);
-        if (n >= 0 && n <= 720) durStr = recomputed;     // sane (≤12h)
-        else { durStr = ""; dropped++; }                 // garbage — clear it
-      }
-    }
-    sheet.getRange(i + 2, 6).setValue(startHM);
-    sheet.getRange(i + 2, 7).setValue(completeHM);
-    sheet.getRange(i + 2, 8).setValue(durStr);
-    healed++;
-  }
-  SpreadsheetApp.getUi().alert("Shift_Logs healed.\n" + healed + " rows normalized.\n" + dropped + " bogus durations cleared.");
-}
-
-function logTaskStart(date, shift, branch, staffName, taskName, startTime) {
-  const sheet = sh("Shift_Logs");
-  if (!sheet) return { success: false, error: "Shift_Logs sheet not found" };
-
-  // Defensive: lock time columns as text on every write (cheap, no-op if already set)
-  sheet.getRange("F:F").setNumberFormat("@");
-  sheet.getRange("G:G").setNumberFormat("@");
-  sheet.getRange("H:H").setNumberFormat("0");
-
-  const normDate = normalizeDateStr(date);
-  const cleanStart = formatTimeHM(startTime); // normalize before write
-  const last = sheet.getLastRow();
-  if (last >= 2) {
-    const data = sheet.getRange(2, 1, last - 1, 5).getValues();
-    for (const row of data) {
-      if (
-        normalizeDateStr(row[0]) === normDate &&
-        String(row[3]).trim().toLowerCase() === String(staffName).toLowerCase() &&
-        String(row[4]).trim().toLowerCase() === String(taskName).toLowerCase()
-      ) {
-        return { success: false, error: "Task already started — cannot restart" };
-      }
-    }
-  }
-  sheet.appendRow([normDate, shift, branch, staffName, taskName, cleanStart, "", ""]);
-  return { success: true };
-}
-
-function logTaskComplete(date, branch, staffName, taskName, completeTime) {
-  const sheet = sh("Shift_Logs");
-  if (!sheet) return { success: false, error: "Shift_Logs sheet not found" };
-  const last = sheet.getLastRow();
-  if (last < 2) return { success: false, error: "No log entries found" };
-  const normDate = normalizeDateStr(date);
-  const cleanCompleteTime = formatTimeHM(completeTime);
-  const data = sheet.getRange(2, 1, last - 1, 8).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (
-      normalizeDateStr(data[i][0]) === normDate &&
-      String(data[i][2]).trim().toLowerCase() === String(branch).toLowerCase() &&
-      String(data[i][3]).trim().toLowerCase() === String(staffName).toLowerCase() &&
-      String(data[i][4]).trim().toLowerCase() === String(taskName).toLowerCase()
-    ) {
-      const cleanStartTime = formatTimeHM(data[i][5]);
-      let duration = diffMinutes(cleanStartTime, cleanCompleteTime);
-
-      // Sanity check — shifts are <12h. If diff is bigger, the start cell was misread.
-      if (duration && Number(duration) > 720) {
-        Logger.log("BAD DURATION row=" + (i+2) + " staff=" + staffName + " task=" + taskName +
-                   " rawStart=" + JSON.stringify(data[i][5]) + " parsedStart=" + cleanStartTime +
-                   " complete=" + cleanCompleteTime + " diff=" + duration);
-        duration = ""; // refuse to write garbage
-      }
-
-      sheet.getRange(i + 2, 7).setValue(cleanCompleteTime);
-      sheet.getRange(i + 2, 8).setValue(duration);
-      updateAllocationStatus(staffName, taskName, "Complete");
-      return { success: true, duration };
-    }
-  }
-  return { success: false, error: "No matching start log found" };
-}
-
-// Phase 5b — return all shift log entries for FM live status overlay
-function getShiftLogs(date, shift) {
-  const sheet = sh("Shift_Logs");
-  if (!sheet) return { logs: [] };
-  const last = sheet.getLastRow();
-  if (last < 2) return { logs: [] };
-  const normDate = normalizeDateStr(date);
-  const normShift = String(shift || "").trim().toLowerCase();
-  const data = sheet.getRange(2, 1, last - 1, 8).getValues();
-  const logs = [];
-  data.forEach(row => {
-    if (
-      normalizeDateStr(row[0]) === normDate &&
-      String(row[1]).trim().toLowerCase() === normShift
-    ) {
-      const startTime    = formatTimeHM(row[5]);
-      const completeTime = formatTimeHM(row[6]);
-      let duration = String(row[7] || "").trim();
-      // Fallback: recompute duration if missing but both times present (heals old broken rows)
-      if (!duration && startTime && completeTime) {
-        duration = diffMinutes(startTime, completeTime);
-      }
-      logs.push({
-        date:         normalizeDateStr(row[0]),
-        shift:        String(row[1]).trim(),
-        branch:       String(row[2]).trim(),
-        staffName:    String(row[3]).trim(),
-        taskName:     String(row[4]).trim(),
-        startTime,
-        completeTime,
-        duration
-      });
-    }
-  });
-  return { logs };
-}
-
-function updateAllocationStatus(staffName, taskName, status) {
-  const sheet = sh("Allocations");
-  if (!sheet) return;
-  const last = sheet.getLastRow();
-  if (last < 2) return;
-  const data = sheet.getRange(2, 1, last - 1, 5).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (
-      String(data[i][3]).trim().toLowerCase() === taskName.toLowerCase() &&
-      String(data[i][4]).trim().toLowerCase() === staffName.toLowerCase()
-    ) {
-      sheet.getRange(i + 2, 7).setValue(status);
-      break;
-    }
-  }
-}
-
-// ── HANDOVER NOTES ────────────────────────────────────────────────────────────
-
-function submitHandoverNote(fromFM, shift, tag, note) {
-  const sheet = sh("Handover_Notes");
-  if (!sheet) return { success: false, error: "Handover_Notes sheet not found" };
-  const date  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy");
-  const last  = sheet.getLastRow();
-  const id    = "HN" + String(last).padStart(3, "0");
-  // Cols: ID | Date | Shift | From FM | Tag | Note | Status
-  sheet.appendRow([id, date, shift, fromFM, tag, note, "Unread"]);
-  // Auto-email for Urgent or Machine Issue
-  if (tag === "Urgent" || tag === "Machine Issue") {
-    try { sendHandoverEmail(fromFM, shift, tag, note, date); } catch(e) {}
-  }
-  return { success: true, id };
-}
-
-function sendHandoverEmail(fromFM, shift, tag, note, date) {
-  const cfg = getEmailConfig();
-  const to  = cfg["Ops Manager Email (TO)"] || "";
-  if (!to) return;
-  const subject = "⚠️ Heebee Handover Alert — " + tag + " | " + date;
-  const body = `<!DOCTYPE html><html><body style="font-family:'Segoe UI',Arial,sans-serif;background:#f3f4f6;margin:0;padding:20px;">
-<div style="max-width:500px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;">
-  <div style="background:#1d1d1f;padding:24px 28px;">
-    <h2 style="color:#fff;margin:0;font-size:18px;">⚠️ Shift Handover Alert</h2>
-    <p style="color:rgba(255,255,255,.5);margin:6px 0 0;font-size:13px;">${cfg["Café Name"] || "Heebee Coffee"}</p>
-  </div>
-  <div style="padding:24px 28px;">
-    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-      <tr><td style="padding:6px 0;color:#9ca3af;font-size:12px;width:100px;">From</td><td style="font-weight:600;color:#1d1d1f;">${fromFM}</td></tr>
-      <tr><td style="padding:6px 0;color:#9ca3af;font-size:12px;">Shift</td><td style="color:#1d1d1f;">${shift}</td></tr>
-      <tr><td style="padding:6px 0;color:#9ca3af;font-size:12px;">Tag</td><td><span style="background:#fef2f2;color:#dc2626;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700;">${tag}</span></td></tr>
-      <tr><td style="padding:6px 0;color:#9ca3af;font-size:12px;">Date</td><td style="color:#1d1d1f;">${date}</td></tr>
-    </table>
-    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:16px;">
-      <p style="margin:0;color:#1d1d1f;line-height:1.6;">${note}</p>
-    </div>
-  </div>
-  <div style="padding:16px 28px;text-align:center;color:#9ca3af;font-size:11px;border-top:1px solid #f3f4f6;">
-    Sent automatically by Heebee Shift System · ${new Date().toISOString()}
-  </div>
-</div></body></html>`;
-  GmailApp.sendEmail(to, subject, "", { htmlBody: body });
-}
-
-function getUnreadNotes() {
-  const sheet = sh("Handover_Notes");
-  if (!sheet) return [];
-  const last = sheet.getLastRow();
-  if (last < 2) return [];
-  const data = sheet.getRange(2, 1, last - 1, 7).getValues();
-  return data
-    .filter(row => String(row[6]).trim() === "Unread")
-    .map(([id, date, shift, fromFM, tag, note, status]) => ({
-      id:     String(id).trim(),
-      date:   String(date).trim(),
-      shift:  String(shift).trim(),
-      fromFM: String(fromFM).trim(),
-      tag:    String(tag).trim(),
-      note:   String(note).trim(),
-      status: String(status).trim()
-    }));
-}
-
-function markNoteRead(id) {
-  const sheet = sh("Handover_Notes");
-  if (!sheet) return { success: false };
-  const last = sheet.getLastRow();
-  if (last < 2) return { success: false };
-  const data = sheet.getRange(2, 1, last - 1, 1).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() === String(id).trim()) {
-      sheet.getRange(i + 2, 7).setValue("Read");
-      return { success: true };
-    }
-  }
-  return { success: false, error: "Note ID not found" };
-}
-
-// ── ANNOUNCEMENTS ─────────────────────────────────────────────────────────────
-
-function getActiveAnnouncements(role) {
-  const sheet = sh("Announcements");
-  if (!sheet) return [];
-  const last = sheet.getLastRow();
-  if (last < 2) return [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const data = sheet.getRange(2, 1, last - 1, 8).getValues();
-  return data
-    .filter(([, , , , target, , status, expiry]) => {
-      if (String(status).trim() !== "Active") return false;
-      if (expiry) {
-        const parts = String(expiry).trim().split("/");
-        if (parts.length === 3) {
-          const expDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-          if (expDate < today) return false;
-        }
-      }
-      const t = String(target).trim();
-      return t === "All" || t === role;
-    })
-    .map(([id, date, title, body, target, priority]) => ({
-      id:       String(id).trim(),
-      date:     String(date).trim(),
-      title:    String(title).trim(),
-      body:     String(body).trim(),
-      target:   String(target).trim(),
-      priority: String(priority).trim()
-    }));
-}
-
-// ── AUTO-CLEAN ────────────────────────────────────────────────────────────────
-
-function autoClean() {
-  cleanSheet("Shift_Logs",      1, 3);  // 3 days
-  cleanSheet("Allocations",     1, 3);  // 3 days
-  cleanSheet("Handover_Notes",  2, 5);  // 5 days
-  archiveExpiredAnnouncements();
-  markStaleUsersOffline();
-}
-
-function cleanSheet(sheetName, dateCol, days) {
-  const sheet = sh(sheetName);
-  if (!sheet) return;
-  const last = sheet.getLastRow();
-  if (last < 2) return;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  cutoff.setHours(0, 0, 0, 0);
-  for (let r = last; r >= 2; r--) {
-    const val   = sheet.getRange(r, dateCol).getValue();
-    if (!val) continue;
-    const parts = String(val).split("/");
-    if (parts.length !== 3) continue;
-    const rowDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-    if (rowDate < cutoff) sheet.deleteRow(r);
-  }
-}
-
-function archiveExpiredAnnouncements() {
-  const sheet = sh("Announcements");
-  if (!sheet) return;
-  const last = sheet.getLastRow();
-  if (last < 2) return;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const data = sheet.getRange(2, 1, last - 1, 8).getValues();
-  for (let i = 0; i < data.length; i++) {
-    const expiry = data[i][7];
-    const status = String(data[i][6]).trim();
-    if (status !== "Active" || !expiry) continue;
-    const parts = String(expiry).split("/");
-    if (parts.length !== 3) continue;
-    const expDate = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-    if (expDate < today) sheet.getRange(i + 2, 7).setValue("Archived");
-  }
-}
-
-function markStaleUsersOffline() {
-  const sheet = sh("Users");
-  if (!sheet) return;
-  const last = sheet.getLastRow();
-  if (last < 2) return;
-  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-  for (let r = 2; r <= last; r++) {
-    const status = String(sheet.getRange(r, 5).getValue()).trim();
-    if (status !== "online") continue;
-    const note = sheet.getRange(r, 5).getNote();
-    if (!note) continue;
-    try {
-      const lastPing = new Date(note);
-      if (lastPing < twoHoursAgo) sheet.getRange(r, 5).setValue("offline");
-    } catch(e) {}
-  }
-}
-
-// Run once to register the 2 AM nightly trigger
-function setupAutoCleanTrigger() {
-  ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === "autoClean") ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger("autoClean").timeBased().everyDays(1).atHour(2).create();
-  SpreadsheetApp.getUi().alert("✅ Auto-clean trigger set — runs every night at 2:00 AM.");
-}
-
-// ── WEB APP — doGet ───────────────────────────────────────────────────────────
-
-function doGet(e) {
-  const action  = e && e.parameter ? e.parameter.action : null;
-  const respond = obj => ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-
-  if (action === "getTasks") {
-    const emailCfg = getEmailConfig();
-    const sysCfg   = getSystemConfig();
-    const merged   = Object.assign({}, emailCfg, sysCfg);
-    return respond({
-      cafeName:     sysCfg["Café Name"] || emailCfg["Café Name"] || "Heebee Coffee",
-      branches:     getBranches(merged),
-      openingTasks: getTasks("🌅 Opening Tasks"),
-      closingTasks: getTasks("🌙 Closing Tasks")
-    });
-  }
-
-  if (action === "getOnlineStaff") {
-    return respond({ staff: getOnlineStaff() });
-  }
-
-  if (action === "getNotesAndAnnouncements") {
-    const role = (e.parameter.role || "Floor Manager").trim();
-    return respond({
-      handoverNotes: getUnreadNotes(),
-      announcements: getActiveAnnouncements(role),
-      hasUnread:     getUnreadNotes().length > 0 || getActiveAnnouncements(role).length > 0
-    });
-  }
-
-  if (action === "getAllocations") {
-    const date  = (e.parameter.date  || "").trim();
-    const shift = (e.parameter.shift || "").trim();
-    const name  = (e.parameter.name  || "").trim();
-    return respond({
-      allocations: name
-        ? getAllocationsForUser(name, date, shift)
-        : getAllAllocations(date, shift)
-    });
-  }
-
-  if (action === "getRoster") {
-    const email = (e.parameter.email || "").trim();
-    const date  = (e.parameter.date  || "").trim();
-    const shift = (e.parameter.shift || "").trim();
-    return respond(getRoster(email, date, shift));
-  }
-
-  if (action === "getRosterAll") {
-    const date  = (e.parameter.date  || "").trim();
-    const shift = (e.parameter.shift || "").trim();
-    return respond(getRosterAll(date, shift));
-  }
-
-  if (action === "getShiftLogs") {
-    const date  = (e.parameter.date  || "").trim();
-    const shift = (e.parameter.shift || "").trim();
-    return respond(getShiftLogs(date, shift));
-  }
-
-  if (action === "getConfig") {
-    const sysCfg = getSystemConfig();
-    return respond({
-      resetPin:     sysCfg["Checklist Reset PIN"] || "9999",
-      branches:     getBranches(sysCfg),
-      morningStart: sysCfg["Morning Shift Start"] || "08:00",
-      morningEnd:   sysCfg["Morning Shift End"]   || "15:00",
-      eveningStart: sysCfg["Evening Shift Start"] || "15:00",
-      eveningEnd:   sysCfg["Evening Shift End"]   || "23:00"
-    });
-  }
-
-  // ── Fallback: serve built-in HTML version (unchanged) ──
-  const cfg    = getEmailConfig();
-  const oTasks = getTasks("🌅 Opening Tasks");
-  const cTasks = getTasks("🌙 Closing Tasks");
-  const branches = getBranches(cfg);
-  const name   = cfg["Café Name"] || "Heebee Coffee";
-  const url    = ScriptApp.getService().getUrl();
-  return HtmlService
-    .createHtmlOutput(buildHTML(name, oTasks, cTasks, branches, url))
-    .setTitle(name + " · Shift Checklist")
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-// ── WEB APP — doPost ──────────────────────────────────────────────────────────
-
-function doPost(e) {
-  const respond = obj => ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-
-  try {
-    const data   = JSON.parse(e.postData.contents);
-    const action = data.action;
-
-    if (action === "login") {
-      return respond(loginUser(data.email, data.pin));
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1d1d1f">
+  <title>Heebee Shift System v3</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@200;300;400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════════════════════════════════
+       HEEBEE LUXURY UI SYSTEM — Core tokens + glass morphism
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    if (action === "logout") {
-      logoutUser(data.email);
-      return respond({ success: true });
+    :root {
+      /* Typography */
+      --font-hero: 'Nunito Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'Space Mono', 'SF Mono', Monaco, monospace;
+      
+      /* Light theme */
+      --bg-light: #f5f5f7;
+      --fg-light: #1d1d1f;
+      --border-light: rgba(0, 0, 0, 0.10);
+      --glass-light: rgba(255, 255, 255, 0.75);
+      --glass-border-light: rgba(255, 255, 255, 0.9);
+      
+      /* Dark theme */
+      --bg-dark: #0a0a0f;
+      --fg-dark: #f5f5f7;
+      --border-dark: rgba(255, 255, 255, 0.10);
+      --glass-dark: rgba(255, 255, 255, 0.12);
+      --glass-border-dark: rgba(255, 255, 255, 0.18);
+      
+      /* Gradients */
+      --warm-gradient: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+      --cool-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      
+      /* Base font size */
+      font-size: 115%;
     }
 
-    if (action === "ping") {
-      pingOnline(data.email);
-      return respond({ success: true });
+    html, body {
+      width: 100%;
+      min-height: 100vh;
+      font-family: var(--font-hero);
+      font-weight: 300;
+      background: var(--bg-light);
+      color: var(--fg-light);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    if (action === "allocateTask") {
-      return respond(allocateTask(
-        data.date, data.shift, data.taskId,
-        data.taskName, data.assignedTo, data.assignedBy
-      ));
+    body {
+      position: relative;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
 
-    if (action === "batchAllocate") {
-      return respond(batchAllocate(
-        data.date, data.shift, data.assignedTo, data.assignedBy,
-        data.adds || [], data.removes || []
-      ));
+    /* Ambient background orbs */
+    body::before,
+    body::after {
+      content: '';
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.15;
+      pointer-events: none;
+      z-index: 0;
     }
 
-    if (action === "removeAllocation") {
-      return respond(removeAllocation(
-        data.date, data.shift, data.taskId, data.assignedTo, data.taskName
-      ));
+    body::before {
+      width: 600px;
+      height: 600px;
+      background: var(--warm-gradient);
+      top: -300px;
+      right: -200px;
     }
 
-    if (action === "setRoster") {
-      return respond(setRoster(
-        data.date, data.shift, data.assignments || []
-      ));
+    body::after {
+      width: 500px;
+      height: 500px;
+      background: var(--cool-gradient);
+      bottom: -250px;
+      left: -150px;
     }
 
-    if (action === "logTaskStart") {
-      return respond(logTaskStart(
-        data.date, data.shift, data.branch,
-        data.staffName, data.taskName, data.startTime
-      ));
+    /* Noise texture overlay */
+    body::after {
+      background-image: 
+        url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noise"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" /%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noise)" opacity="0.05"/%3E%3C/svg%3E'),
+        var(--cool-gradient);
     }
 
-    if (action === "logTaskComplete") {
-      return respond(logTaskComplete(
-        data.date, data.branch, data.staffName,
-        data.taskName, data.completeTime
-      ));
+    /* Glass surfaces */
+    .glass {
+      background: var(--glass-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
     }
 
-    if (action === "submitHandoverNote") {
-      return respond(submitHandoverNote(
-        data.fromFM, data.shift, data.tag, data.note
-      ));
+    /* Buttons */
+    button {
+      font-family: var(--font-hero);
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    if (action === "markNoteRead") {
-      return respond(markNoteRead(data.id));
+    button:active {
+      transform: scale(0.98);
     }
 
-    // ── Fallback: original email sending (unchanged) ──
-    const cfg    = getEmailConfig();
-    const result = sendEmail(data, cfg);
-    return respond({ success: true, message: result });
+    /* Inputs */
+    input {
+      font-family: var(--font-hero);
+      border: none;
+      outline: none;
+      transition: all 0.2s ease;
+    }
 
-  } catch(err) {
-    return respond({ success: false, error: err.message });
-  }
-}
+    /* Hide scrollbars but keep functionality */
+    ::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
 
-// ── EMAIL (unchanged from v2) ─────────────────────────────────────────────────
+    /* ══════════════════════════════════════════════════════════════════════════
+       APP CONTAINER
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    #app {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 20px;
+      z-index: 1;
+    }
 
-function sendEmail(data, cfg) {
-  const {shift,branch,staffName,date,time,tasks,duration} = data;
-  const isOpen   = shift === "opening";
-  const emoji    = isOpen ? "🌅" : "🌙";
-  const shiftLbl = isOpen ? "Opening" : "Closing";
-  const hdrColor = isOpen ? "#4B1F00" : "#0F2340";
+    /* ══════════════════════════════════════════════════════════════════════════
+       SCREENS (Login, FM Dashboard, Barista View)
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    .screen {
+      display: none;
+    }
 
-  let subject = cfg[shiftLbl+" Email Subject"] || emoji+" "+shiftLbl+" Checklist Complete";
-  subject = subject.replace("{branch}", branch).replace("{date}", date);
+    .screen.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
 
-  const sections = {};
-  tasks.forEach(t => {
-    const sec = t.section || "General";
-    if (!sections[sec]) sections[sec] = [];
-    sections[sec].push(t);
-  });
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
 
-  const total   = tasks.length;
-  const done    = tasks.filter(t=>t.done).length;
-  const missed  = tasks.filter(t=>!t.done);
-  const pct     = Math.round(done/total*100);
-  const allDone = done === total;
+    /* ══════════════════════════════════════════════════════════════════════════
+       LOGIN SCREEN
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    .login-hero {
+      text-align: center;
+      padding: 60px 0 40px;
+    }
 
-  let secHtml = "";
-  Object.entries(sections).forEach(([sec, items]) => {
-    const sd = items.filter(i=>i.done).length;
-    const st = items.length;
-    const ok = sd===st;
-    secHtml += `<div style="margin-bottom:18px;">
-      <div style="background:${ok?"#dcfce7":"#fef3c7"};border-radius:8px;padding:9px 14px;margin-bottom:8px;display:flex;justify-content:space-between;">
-        <span style="font-weight:700;color:${ok?"#14532d":"#92400e"};font-size:13px;">${sec}</span>
-        <span style="font-family:monospace;font-size:11px;color:${ok?"#14532d":"#92400e"};">${sd}/${st}</span>
-      </div>`;
-    items.forEach(item => {
-      secHtml += `<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 6px;border-bottom:1px solid #f3f4f6;">
-        <span style="font-size:15px;">${item.done?"✅":"❌"}</span>
-        <div>
-          <div style="font-size:12px;${item.done?"color:#9ca3af;text-decoration:line-through;":"color:#111827;font-weight:600;"}">${item.task}</div>
-          ${item.who?`<div style="font-size:11px;color:#6b7280;margin-top:2px;">👤 ${item.who}</div>`:""}
-        </div>
-      </div>`;
-    });
-    secHtml += `</div>`;
-  });
+    .login-hero h1 {
+      font-size: 1.8rem;
+      font-weight: 200;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      background: var(--warm-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
 
-  let missedHtml = "";
-  if (missed.length > 0) {
-    missedHtml = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:16px;margin:20px 0;">
-      <p style="font-weight:700;color:#dc2626;margin:0 0 10px;">⚠️ ${missed.length} Task${missed.length>1?"s":""} Not Completed</p>
-      ${missed.map(t=>`<div style="display:flex;gap:8px;margin:5px 0;"><span style="color:#7f1d1d;font-size:12px;">• ${t.task}</span>${t.who?`<span style="font-size:11px;color:#9ca3af;">(${t.who})</span>`:""}</div>`).join("")}
-    </div>`;
-  }
+    .login-hero p {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #86868b;
+    }
 
-  const body = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
-<div style="max-width:600px;margin:0 auto;padding:24px 16px;">
-  <div style="background:${hdrColor};border-radius:16px 16px 0 0;padding:30px 28px 22px;text-align:center;">
-    <div style="font-size:3rem;margin-bottom:10px;">${emoji}</div>
-    <h1 style="color:white;margin:0;font-size:22px;font-weight:800;">${shiftLbl} Shift Complete</h1>
-    <p style="color:rgba(255,255,255,.65);margin:6px 0 0;font-size:14px;">${cfg["Café Name"]||"Heebee Coffee"} · ${branch}</p>
-  </div>
-  <div style="background:${allDone?"#dcfce7":"#fef3c7"};padding:14px 28px;border-left:4px solid ${allDone?"#14532d":"#92400e"};">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <span style="font-weight:700;color:${allDone?"#14532d":"#92400e"};font-size:13px;">${allDone?"✅ ALL TASKS COMPLETE":"⚠️ "+done+"/"+total+" TASKS DONE"}</span>
-      <span style="font-family:monospace;font-weight:700;color:${allDone?"#14532d":"#92400e"};font-size:13px;">${pct}%</span>
-    </div>
-    <div style="background:rgba(0,0,0,.1);border-radius:4px;height:6px;margin-top:8px;">
-      <div style="background:${allDone?"#14532d":"#92400e"};height:6px;border-radius:4px;width:${pct}%;"></div>
-    </div>
-  </div>
-  <div style="background:white;padding:16px 28px;display:flex;gap:24px;flex-wrap:wrap;border-bottom:1px solid #f3f4f6;">
-    ${[["👤 Staff",staffName],["📅 Date",date],["⏰ Time",time],["⏱️ Duration",duration]].map(([l,v])=>
-      `<div><span style="font-size:11px;color:#9ca3af;display:block;">${l}</span><span style="font-weight:600;color:#111827;font-size:13px;">${v||"—"}</span></div>`
-    ).join("")}
-  </div>
-  ${missedHtml?`<div style="background:white;padding:0 28px;">${missedHtml}</div>`:""}
-  <div style="background:white;padding:20px 28px 24px;border-radius:0 0 16px 16px;">
-    <h2 style="font-size:13px;color:#374151;font-weight:700;margin:0 0 16px;text-transform:uppercase;letter-spacing:1px;">Task Breakdown</h2>
-    ${secHtml}
-  </div>
-  <div style="text-align:center;padding:20px;color:#9ca3af;font-size:11px;">
-    ${cfg["Email Footer Text"]||"Sent automatically by Heebee Coffee Shift System"}<br>
-    <span style="font-family:monospace;">${new Date().toISOString()}</span>
-  </div>
-</div></body></html>`;
+    .login-card {
+      background: var(--glass-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-radius: 24px;
+      padding: 32px 28px;
+      margin-bottom: 16px;
+    }
 
-  const to  = cfg["Ops Manager Email (TO)"] || "";
-  const cc  = ["CC Email 1","CC Email 2","CC Email 3","CC Email 4"].map(k=>cfg[k]).filter(Boolean).join(",");
-  const rt  = cfg["Reply-To Email"] || to;
-  if (!to) throw new Error("No TO email set in Email Config sheet.");
-  const opts = { htmlBody: body };
-  if (cc) opts.cc = cc;
-  if (rt) opts.replyTo = rt;
-  GmailApp.sendEmail(to, subject, "", opts);
-  return `Sent to ${to}${cc?" + CC: "+cc:""}`;
-}
+    .input-group {
+      margin-bottom: 20px;
+    }
 
-// ── HTML BUILDER (unchanged from v2) ─────────────────────────────────────────
+    .input-group label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #86868b;
+      margin-bottom: 8px;
+    }
 
-function buildHTML(cafeName, openTasks, closeTasks, branches, scriptUrl) {
+    .input-group input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 0.9rem;
+      font-weight: 400;
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      color: var(--fg-light);
+    }
 
-  function whoToColor(who) {
-    const map = {
-      'barista 1': {bg:'#dcfce7',fg:'#14532d',dbg:'rgba(34,197,94,0.18)',dfg:'#86efac'},
-      'barista 2': {bg:'#dbeafe',fg:'#1e3a8a',dbg:'rgba(99,179,237,0.18)',dfg:'#93c5fd'},
-      'barista 3': {bg:'#ede9fe',fg:'#4c1d95',dbg:'rgba(167,139,250,0.18)',dfg:'#c4b5fd'},
-      'manager':   {bg:'#fef9c3',fg:'#713f12',dbg:'rgba(251,191,36,0.18)',dfg:'#fde047'},
-      'all staff': {bg:'#ffe4e6',fg:'#881337',dbg:'rgba(251,113,133,0.18)',dfg:'#fda4af'},
-    };
-    return map[who.toLowerCase()] || {bg:'#f3f4f6',fg:'#374151',dbg:'rgba(255,255,255,0.12)',dfg:'rgba(255,255,255,0.75)'};
-  }
+    .input-group input:focus {
+      background: rgba(255, 255, 255, 0.8);
+      border-color: #1d1d1f;
+    }
 
-  function detectSections(tasks) {
-    const defs = [
-      {kw:['switch on','wash hands','uniform','previous night','sweep','mop','wipe all','washroom','check all'],icon:'◎',name:'Before Opening'},
-      {kw:['purge','test shot','grind','steam wand','hopper','dial in','milk in bar','syrup','cups at bar','lids','ice','cold brew','whip cream','batch brew'],icon:'◈',name:'Espresso Bar'},
-      {kw:['bakery','delivery','date-label','fridge temp','expire','display cabinet','cabinet','condiment','pastry','baked','style'],icon:'◇',name:'Cabinet & Pastries'},
-      {kw:['float','pos','card machine','printer roll','brief','specials board','walk the full','music','unlock','flip sign'],icon:'◉',name:'Till & Operations'},
-      {kw:['running down','run down','pre-wipe','last hour','stock down'],icon:'◎',name:'Last Hour'},
-      {kw:['last customer','lock front','closed','stop music'],icon:'◈',name:'After Last Customer'},
-      {kw:['backflush','portafilter','steam wand','drip tray','grinder','standby','blender','machine'],icon:'◇',name:'Machine Clean'},
-      {kw:['closing','remaining pastry','expired','wrap','fridge temperature','freezer','syrups','milks','dairy','order list','supplier'],icon:'◉',name:'Food & Orders'},
-      {kw:['bar surface','table','chair','menu board','sweep entire','mop entire','sanitise washroom','bins','bin liner','cloths'],icon:'◎',name:'Surfaces & Floor'},
-      {kw:['cash','till','reconcile','float','pos','sales report','void','incident'],icon:'◈',name:'Cash & Reports'},
-      {kw:['appliance','gas','visual check','non-essential light','window','back door','alarm','front door','lock up','final'],icon:'◇',name:'Lock Up'},
-    ];
-    const sections = []; let cur = null;
-    tasks.forEach(t => {
-      const tl = t.task.toLowerCase()+' '+t.tip.toLowerCase();
-      let matched = null;
-      for (const d of defs) { if (d.kw.some(k=>tl.includes(k))) { matched=d; break; } }
-      if (!matched) matched = {icon:'◉',name:t.who||'Tasks'};
-      if (!cur||cur.name!==matched.name) { cur={icon:matched.icon,name:matched.name,tasks:[]}; sections.push(cur); }
-      cur.tasks.push(t);
-    });
-    return sections;
-  }
+    .pin-input {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
 
-  function buildTasksHTML(tasks, panel) {
-    const sections = detectSections(tasks);
-    let html = ''; let gi = 0;
-    sections.forEach((sec, si) => {
-      html += '<div class="sec" id="sec-'+panel+'-'+si+'">'
-            + '<div class="sec-head">'
-            + '<span class="sec-icon">'+sec.icon+'</span>'
-            + '<span class="sec-name">'+sec.name+'</span>'
-            + '<span class="sec-count" id="sc-'+panel+'-'+si+'">0 / '+sec.tasks.length+'</span>'
-            + '</div><div class="task-list">';
-      sec.tasks.forEach((t) => {
-        const idx = gi++;
-        const wc  = whoToColor(t.who);
-        const pri = t.priority.includes('CRITICAL')?'p-red':t.priority.includes('HIGH')?'p-amb':'p-grn';
-        const priLabel = t.priority.replace('🔴 ','').replace('🟡 ','').replace('🟢 ','');
-        html += '<div class="task" data-idx="'+idx+'" data-si="'+si+'" data-panel="'+panel+'" data-wbg="'+wc.bg+'" data-wfg="'+wc.fg+'" data-wdbg="'+wc.dbg+'" data-wdfg="'+wc.dfg+'" onclick="tap(this)">'
-              + '<div class="task-check"></div>'
-              + '<div class="task-body">'
-              + '<div class="task-meta">'
-              + '<span class="who-tag" data-light-bg="'+wc.bg+'" data-light-fg="'+wc.fg+'" data-dark-bg="'+wc.dbg+'" data-dark-fg="'+wc.dfg+'">'+t.who+'</span>'
-              + '<span class="pri-tag '+pri+'">'+priLabel+'</span>'
-              + '</div>'
-              + '<div class="task-name">'+t.task+'</div>'
-              + (t.tip ? '<div class="task-tip">'+t.tip+'</div>' : '')
-              + '</div></div>';
-      });
-      html += '</div></div>';
-    });
-    return html;
-  }
+    .pin-input input {
+      width: 52px;
+      height: 52px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 1.4rem;
+      font-weight: 700;
+      padding: 0;
+    }
 
-  const openHTML  = buildTasksHTML(openTasks,  'open');
-  const closeHTML = buildTasksHTML(closeTasks, 'close');
-  const brOpts    = branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
-  const oTotal    = openTasks.length;
-  const cTotal    = closeTasks.length;
+    .btn-primary {
+      width: 100%;
+      padding: 16px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: #1d1d1f;
+      color: #fff;
+      border-radius: 16px;
+      margin-top: 24px;
+    }
 
-  return `<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>${cafeName}</title>
-<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@200;300;400;600&family=Space+Mono:wght@400&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Nunito Sans',sans-serif;font-weight:300;background:#f5f5f7;min-height:100vh;color:#1d1d1f;padding:20px;}
-.app{max-width:540px;margin:0 auto;}
-.hdr{padding:40px 0 24px;text-align:center;}
-.hdr-name{font-size:2rem;font-weight:200;letter-spacing:8px;text-transform:uppercase;}
-.tabs{display:flex;gap:6px;background:rgba(255,255,255,0.65);border-radius:60px;padding:5px;margin-bottom:24px;}
-.tab{flex:1;padding:13px;border:none;border-radius:55px;cursor:pointer;font-family:'Nunito Sans',sans-serif;font-weight:600;font-size:.82rem;background:transparent;color:#86868b;}
-.tab.active-tab{background:#1d1d1f;color:#fff;}
-.panel{display:none;}.panel.active{display:block;}
-.sec{background:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.9);border-radius:22px;margin-bottom:12px;overflow:hidden;}
-.sec-head{padding:16px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(0,0,0,0.06);}
-.sec-icon{font-size:.9rem;color:#b8860b;width:20px;text-align:center;}
-.sec-name{font-family:'Space Mono',monospace;font-size:.6rem;letter-spacing:3px;text-transform:uppercase;color:#424245;flex:1;}
-.sec-count{font-family:'Space Mono',monospace;font-size:.55rem;color:#86868b;background:rgba(255,255,255,0.55);padding:3px 9px;border-radius:20px;}
-.task-list{padding:0 4px 8px;}
-.task{display:flex;align-items:flex-start;gap:14px;padding:14px 16px;border-radius:14px;cursor:pointer;border-bottom:1px solid rgba(0,0,0,0.06);margin:4px 0;}
-.task.done{opacity:.38;}
-.task-check{width:22px;height:22px;border-radius:7px;border:1.5px solid rgba(0,0,0,0.1);flex-shrink:0;margin-top:3px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.8);font-size:12px;}
-.task.done .task-check{background:#1d1d1f;border-color:#1d1d1f;color:#fff;}
-.task-body{flex:1;}
-.task-meta{display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;}
-.who-tag{font-family:'Space Mono',monospace;font-size:.6rem;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:.5px;text-transform:uppercase;}
-.pri-tag{font-family:'Space Mono',monospace;font-size:.52rem;padding:2px 8px;border-radius:20px;border:1px solid transparent;}
-.p-red{background:#fef2f2;color:#dc2626;}.p-amb{background:#fffbeb;color:#d97706;}.p-grn{background:#f0fdf4;color:#16a34a;}
-.task-name{font-size:.875rem;font-weight:400;color:#1d1d1f;line-height:1.5;}
-.task.done .task-name{text-decoration:line-through;color:#86868b;}
-.task-tip{font-size:.7rem;color:#86868b;margin-top:4px;font-style:italic;line-height:1.5;}
-.email-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:17px;border-radius:22px;border:none;font-family:'Nunito Sans',sans-serif;font-weight:600;font-size:.82rem;letter-spacing:2px;text-transform:uppercase;cursor:pointer;margin:24px 0 10px;background:#1d1d1f;color:#fff;}
-.reset-btn{display:block;margin:0 auto;padding:10px 26px;border-radius:30px;border:1px solid rgba(0,0,0,0.1);background:transparent;color:#86868b;font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:3px;cursor:pointer;text-transform:uppercase;}
-.email-status{text-align:center;font-size:.75rem;padding:11px;border-radius:12px;margin-bottom:10px;display:none;}
-.es-ok{background:#f0fdf4;color:#16a34a;border:1px solid rgba(22,163,74,.2);display:block;}
-.es-err{background:#fef2f2;color:#dc2626;border:1px solid rgba(220,38,38,.2);display:block;}
-</style></head>
+    .btn-primary:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      padding: 12px 16px;
+      background: rgba(220, 38, 38, 0.1);
+      border: 1px solid rgba(220, 38, 38, 0.2);
+      border-radius: 12px;
+      color: #dc2626;
+      font-size: 0.75rem;
+      text-align: center;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .error-msg.show {
+      display: block;
+      animation: shake 0.4s ease;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-8px); }
+      75% { transform: translateX(8px); }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       DASHBOARD HEADER
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    .dash-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 0 24px;
+    }
+
+    .dash-user {
+      flex: 1;
+    }
+
+    .dash-user-name {
+      font-size: 1.3rem;
+      font-weight: 200;
+      letter-spacing: 2px;
+      margin-bottom: 4px;
+    }
+
+    .dash-user-meta {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #86868b;
+    }
+
+    .dash-logout {
+      padding: 10px 20px;
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: rgba(220, 38, 38, 0.1);
+      color: #dc2626;
+      border: 1px solid rgba(220, 38, 38, 0.2);
+      border-radius: 12px;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       FM DASHBOARD TABS
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    .fm-tabs {
+      display: flex;
+      gap: 8px;
+      background: var(--glass-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-radius: 20px;
+      padding: 6px;
+      margin-bottom: 20px;
+    }
+
+    .fm-tab {
+      flex: 1;
+      padding: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      background: transparent;
+      color: #86868b;
+      border-radius: 14px;
+    }
+
+    .fm-tab.active {
+      background: #1d1d1f;
+      color: #fff;
+    }
+
+    .fm-panel {
+      display: none;
+    }
+
+    .fm-panel.active {
+      display: block;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       STAFF LIST (FM Dashboard → Staff tab)
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    .staff-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .staff-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      background: var(--glass-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-radius: 16px;
+    }
+
+    .staff-status {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #86868b;
+      flex-shrink: 0;
+    }
+
+    .staff-status.online {
+      background: #22c55e;
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+    }
+
+    .staff-info {
+      flex: 1;
+    }
+
+    .staff-name {
+      font-size: 0.9rem;
+      font-weight: 400;
+      margin-bottom: 2px;
+    }
+
+    .staff-meta {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #86868b;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       ROSTER PANEL (FM Dashboard → Roster tab) — BUG 3 FIX APPLIED
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    .roster-hint {
+      padding: 14px 16px;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 12px;
+      color: #6366f1;
+      font-size: 0.7rem;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .roster-slots {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .roster-slot {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: var(--glass-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-radius: 14px;
+    }
+
+    .roster-role {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #86868b;
+      min-width: 80px;
+    }
+
+    .roster-select {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 0.8rem;
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      color: var(--fg-light);
+      cursor: pointer;
+    }
+
+    .roster-select:focus {
+      background: rgba(255, 255, 255, 0.8);
+      border-color: #1d1d1f;
+    }
+
+    .roster-status {
+      padding: 12px 16px;
+      background: var(--glass-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-radius: 12px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .roster-status-label {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #86868b;
+      margin-bottom: 4px;
+    }
+
+    .roster-status-value {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--fg-light);
+    }
+
+    .btn-save-roster {
+      width: 100%;
+      padding: 14px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: #1d1d1f;
+      color: #fff;
+      border-radius: 14px;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       BARISTA VIEW — Task cards with timer buttons
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    .barista-header {
+      padding: 16px 0 20px;
+    }
+
+    .barista-shift {
+      font-size: 1.5rem;
+      font-weight: 200;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .barista-meta {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #86868b;
+    }
+
+    .priority-filter {
+      display: flex;
+      gap: 8px;
+      background: var(--glass-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-radius: 16px;
+      padding: 5px;
+      margin-bottom: 20px;
+    }
+
+    .filter-btn {
+      flex: 1;
+      padding: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      background: transparent;
+      color: #86868b;
+      border-radius: 11px;
+    }
+
+    .filter-btn.active {
+      background: #1d1d1f;
+      color: #fff;
+    }
+
+    .task-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .task-card {
+      padding: 18px 20px;
+      background: var(--glass-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-radius: 18px;
+    }
+
+    .task-card.started {
+      border-color: rgba(34, 197, 94, 0.3);
+      background: rgba(34, 197, 94, 0.05);
+    }
+
+    .task-card.done {
+      opacity: 0.5;
+      border-color: rgba(0, 0, 0, 0.1);
+    }
+
+    .task-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .task-who {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      background: rgba(99, 102, 241, 0.1);
+      color: #6366f1;
+      border-radius: 8px;
+    }
+
+    .task-priority {
+      font-family: var(--font-mono);
+      font-size: 0.55rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 8px;
+    }
+
+    .task-priority.high {
+      background: rgba(251, 191, 36, 0.1);
+      color: #f59e0b;
+    }
+
+    .task-priority.critical {
+      background: rgba(220, 38, 38, 0.1);
+      color: #dc2626;
+    }
+
+    .task-name {
+      font-size: 0.95rem;
+      font-weight: 400;
+      line-height: 1.5;
+      margin-bottom: 6px;
+    }
+
+    .task-tip {
+      font-size: 0.7rem;
+      color: #86868b;
+      font-style: italic;
+      line-height: 1.4;
+      margin-bottom: 14px;
+    }
+
+    .task-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-task {
+      flex: 1;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      border-radius: 12px;
+    }
+
+    .btn-start {
+      background: rgba(34, 197, 94, 0.15);
+      color: #16a34a;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .btn-done {
+      background: rgba(99, 102, 241, 0.15);
+      color: #6366f1;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .task-timer {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: #86868b;
+      text-align: center;
+      padding: 8px;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       UTILITY CLASSES
+       ══════════════════════════════════════════════════════════════════════════ */
+    
+    .hidden {
+      display: none !important;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
+      color: #86868b;
+      font-size: 0.8rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #86868b;
+      font-size: 0.85rem;
+    }
+
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      opacity: 0.3;
+    }
+  </style>
+</head>
 <body>
-<div class="app">
-  <div class="hdr"><div class="hdr-name">${cafeName}</div></div>
-  <div class="tabs">
-    <button class="tab active-tab" onclick="sw('open')">Opening</button>
-    <button class="tab" onclick="sw('close')">Closing</button>
+  <div id="app">
+    <!-- ══════════════════════════════════════════════════════════════════════
+         LOGIN SCREEN
+         ══════════════════════════════════════════════════════════════════════ -->
+    <div id="screenLogin" class="screen active">
+      <div class="login-hero">
+        <h1>Heebee</h1>
+        <p>Shift System v3</p>
+      </div>
+      
+      <div class="login-card">
+        <div class="input-group">
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" placeholder="your@email.com" autocomplete="email">
+        </div>
+        
+        <div class="input-group">
+          <label>4-Digit PIN</label>
+          <div class="pin-input">
+            <input type="tel" maxlength="1" class="pin-digit" data-index="0" inputmode="numeric" pattern="[0-9]*">
+            <input type="tel" maxlength="1" class="pin-digit" data-index="1" inputmode="numeric" pattern="[0-9]*">
+            <input type="tel" maxlength="1" class="pin-digit" data-index="2" inputmode="numeric" pattern="[0-9]*">
+            <input type="tel" maxlength="1" class="pin-digit" data-index="3" inputmode="numeric" pattern="[0-9]*">
+          </div>
+        </div>
+        
+        <button class="btn-primary" id="btnLogin" disabled>Sign In</button>
+      </div>
+      
+      <div class="error-msg" id="loginError"></div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         FM DASHBOARD
+         ══════════════════════════════════════════════════════════════════════ -->
+    <div id="screenFM" class="screen">
+      <div class="dash-header">
+        <div class="dash-user">
+          <div class="dash-user-name" id="fmName">—</div>
+          <div class="dash-user-meta"><span id="fmShift">—</span> · Floor Manager</div>
+        </div>
+        <button class="dash-logout" id="btnLogoutFM">Logout</button>
+      </div>
+
+      <div class="fm-tabs">
+        <button class="fm-tab active" data-tab="staff">Staff</button>
+        <button class="fm-tab" data-tab="roster">Roster</button>
+        <button class="fm-tab" data-tab="notes">Notes</button>
+      </div>
+
+      <!-- Staff tab -->
+      <div id="panelStaff" class="fm-panel active">
+        <div id="staffList" class="staff-list">
+          <div class="loading">Loading staff...</div>
+        </div>
+      </div>
+
+      <!-- Roster tab — BUG 3 FIX: Only shows Barista 1/2/3, FM auto-injected on save -->
+      <div id="panelRoster" class="fm-panel">
+        <div class="roster-hint">Assign baristas · you're FM for this shift</div>
+        
+        <div class="roster-slots">
+          <div class="roster-slot">
+            <div class="roster-role">Barista 1</div>
+            <select class="roster-select" data-role="Barista 1">
+              <option value="">— Not assigned —</option>
+            </select>
+          </div>
+          <div class="roster-slot">
+            <div class="roster-role">Barista 2</div>
+            <select class="roster-select" data-role="Barista 2">
+              <option value="">— Not assigned —</option>
+            </select>
+          </div>
+          <div class="roster-slot">
+            <div class="roster-role">Barista 3</div>
+            <select class="roster-select" data-role="Barista 3">
+              <option value="">— Not assigned —</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="roster-status">
+          <div class="roster-status-label">Status</div>
+          <div class="roster-status-value" id="rosterStatusText">NOT SET</div>
+        </div>
+
+        <button class="btn-save-roster" id="btnSaveRoster">Save Roster</button>
+      </div>
+
+      <!-- Notes tab (placeholder) -->
+      <div id="panelNotes" class="fm-panel">
+        <div class="empty-state">
+          <div class="empty-state-icon">📝</div>
+          <div>Handover notes coming soon</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         BARISTA VIEW
+         ══════════════════════════════════════════════════════════════════════ -->
+    <div id="screenBarista" class="screen">
+      <div class="dash-header">
+        <div class="dash-user">
+          <div class="dash-user-name" id="baristaName">—</div>
+          <div class="dash-user-meta"><span id="baristaRole">—</span> · <span id="baristaShift">—</span></div>
+        </div>
+        <button class="dash-logout" id="btnLogoutBarista">Logout</button>
+      </div>
+
+      <div class="priority-filter">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="critical">Critical</button>
+        <button class="filter-btn" data-filter="high">High</button>
+      </div>
+
+      <div id="taskCards" class="task-cards">
+        <div class="loading">Loading tasks...</div>
+      </div>
+    </div>
   </div>
-  <div class="panel active" id="panelO">
-    ${openHTML}
-    <div class="email-status" id="esO"></div>
-    <button class="email-btn" id="ebO" onclick="sendReport('open')">Send Opening Report</button>
-    <button class="reset-btn" onclick="rst('open')">Reset Shift</button>
-  </div>
-  <div class="panel" id="panelC">
-    ${closeHTML}
-    <div class="email-status" id="esC"></div>
-    <button class="email-btn" id="ebC" onclick="sendReport('close')">Send Closing Report</button>
-    <button class="reset-btn" onclick="rst('close')">Reset Shift</button>
-  </div>
-</div>
-<script>
-const SCRIPT_URL="${scriptUrl}";
-const O_TOTAL=${oTotal};const C_TOTAL=${cTotal};
-const checked={open:{},close:{}};const starts={open:Date.now(),close:Date.now()};
-let currentTab='open';
-function sw(t){if(t===currentTab)return;currentTab=t;document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active-tab',i===(t==='open'?0:1)));document.getElementById('panelO').className='panel'+(t==='open'?' active':'');document.getElementById('panelC').className='panel'+(t==='close'?' active':'');}
-function tap(el){const p=el.dataset.panel,idx=el.dataset.idx;checked[p][idx]=!checked[p][idx];const done=checked[p][idx];el.classList.toggle('done',done);el.querySelector('.task-check').textContent=done?'✓':'';}
-function rst(p){checked[p]={};document.getElementById(p==='open'?'panelO':'panelC').querySelectorAll('.task').forEach(el=>{el.classList.remove('done');el.querySelector('.task-check').textContent='';});}
-function pad(n){return String(n).padStart(2,'0');}
-function nowT(){const d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes());}
-function today(){const d=new Date();return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();}
-function dur(p){const m=Math.floor((Date.now()-starts[p])/60000);return m<1?'< 1 min':m+' min';}
-function collect(p){return Array.from(document.getElementById(p==='open'?'panelO':'panelC').querySelectorAll('.task')).map(el=>({task:el.querySelector('.task-name').textContent,who:el.querySelector('.who-tag')?.textContent||'',section:el.closest('.sec')?.querySelector('.sec-name')?.textContent||'',done:el.classList.contains('done')}));}
-async function sendReport(p){const isO=p==='open';const btn=document.getElementById(isO?'ebO':'ebC');const es=document.getElementById(isO?'esO':'esC');btn.disabled=true;btn.textContent='Sending…';try{const res=await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify({shift:p,branch:'Main Café',staffName:'Staff',date:today(),time:nowT(),duration:dur(p),tasks:collect(p)})});const json=await res.json();if(json.success){es.className='email-status es-ok';es.textContent='Sent ✓';}else throw new Error(json.error);}catch(err){es.className='email-status es-err';es.textContent='Failed — '+err.message;btn.disabled=false;btn.textContent='Retry';}}
-<\/script>
-</body></html>`;
-}
+
+  <script>
+    // ══════════════════════════════════════════════════════════════════════════
+    //  CONFIG — Replace with your Apps Script web app URL
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    const API_URL = 'YOUR_APPS_SCRIPT_URL_HERE'; // ← PASTE YOUR DEPLOYED WEB APP URL HERE
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  STATE
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    let session = null;
+    let allStaff = [];
+    let rosterState = {};
+    let taskTimers = {}; // { taskName: { startTime: Date, intervalId: setInterval } }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  INIT
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      checkSession();
+      initLoginHandlers();
+      initFMHandlers();
+      initBaristaHandlers();
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  SESSION MANAGEMENT
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    function checkSession() {
+      const stored = localStorage.getItem('hb_v3_session');
+      if (!stored) return;
+      
+      try {
+        const s = JSON.parse(stored);
+        const age = Date.now() - s.loginTime;
+        if (age > 2 * 60 * 60 * 1000) { // 2 hours
+          logout();
+          return;
+        }
+        session = s;
+        showScreen(s.role === 'Floor Manager' ? 'screenFM' : 'screenBarista');
+        startPingInterval();
+      } catch (e) {
+        logout();
+      }
+    }
+
+    function saveSession(data) {
+      session = {
+        ...data,
+        loginTime: Date.now()
+      };
+      localStorage.setItem('hb_v3_session', JSON.stringify(session));
+    }
+
+    function logout() {
+      if (session) {
+        api('logout', { email: session.email });
+      }
+      session = null;
+      localStorage.removeItem('hb_v3_session');
+      showScreen('screenLogin');
+      clearAllTimers();
+    }
+
+    function startPingInterval() {
+      setInterval(() => {
+        if (session) {
+          api('ping', { email: session.email });
+        }
+      }, 30000); // 30s
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  API HELPER
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    async function api(action, data = {}) {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...data })
+      });
+      return await res.json();
+    }
+
+    async function apiGet(action, params = {}) {
+      const url = new URL(API_URL);
+      url.searchParams.set('action', action);
+      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+      const res = await fetch(url);
+      return await res.json();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  LOGIN HANDLERS
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    function initLoginHandlers() {
+      const emailInput = document.getElementById('loginEmail');
+      const pinInputs = document.querySelectorAll('.pin-digit');
+      const btnLogin = document.getElementById('btnLogin');
+      const errorMsg = document.getElementById('loginError');
+
+      // Auto-advance PIN digits
+      pinInputs.forEach((input, idx) => {
+        input.addEventListener('input', (e) => {
+          const val = e.target.value;
+          if (val.length === 1 && idx < 3) {
+            pinInputs[idx + 1].focus();
+          }
+          checkLoginReady();
+        });
+        
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+            pinInputs[idx - 1].focus();
+          }
+        });
+      });
+
+      emailInput.addEventListener('input', checkLoginReady);
+
+      function checkLoginReady() {
+        const email = emailInput.value.trim();
+        const pin = Array.from(pinInputs).map(i => i.value).join('');
+        btnLogin.disabled = !email || pin.length !== 4;
+      }
+
+      btnLogin.addEventListener('click', async () => {
+        const email = emailInput.value.trim();
+        const pin = Array.from(pinInputs).map(i => i.value).join('');
+        
+        btnLogin.disabled = true;
+        btnLogin.textContent = 'Signing in...';
+        errorMsg.classList.remove('show');
+
+        const res = await api('login', { email, pin });
+        
+        if (res.success) {
+          saveSession(res);
+          showScreen(res.role === 'Floor Manager' ? 'screenFM' : 'screenBarista');
+          startPingInterval();
+          
+          // Reset form
+          emailInput.value = '';
+          pinInputs.forEach(i => i.value = '');
+          btnLogin.textContent = 'Sign In';
+        } else {
+          errorMsg.textContent = res.error || 'Login failed';
+          errorMsg.classList.add('show');
+          btnLogin.disabled = false;
+          btnLogin.textContent = 'Sign In';
+        }
+      });
+
+      // Enter key submits
+      emailInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !btnLogin.disabled) btnLogin.click();
+      });
+      pinInputs[3].addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !btnLogin.disabled) btnLogin.click();
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  FM DASHBOARD HANDLERS
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    function initFMHandlers() {
+      document.getElementById('btnLogoutFM').addEventListener('click', logout);
+
+      // Tab switching
+      document.querySelectorAll('.fm-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          const target = tab.dataset.tab;
+          document.querySelectorAll('.fm-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          document.querySelectorAll('.fm-panel').forEach(p => p.classList.remove('active'));
+          document.getElementById('panel' + target.charAt(0).toUpperCase() + target.slice(1)).classList.add('active');
+        });
+      });
+
+      // Roster save
+      document.getElementById('btnSaveRoster').addEventListener('click', saveRoster);
+    }
+
+    async function loadFMDashboard() {
+      document.getElementById('fmName').textContent = session.name;
+      document.getElementById('fmShift').textContent = getShift();
+      
+      await loadStaffList();
+      await loadRosterPanel();
+    }
+
+    // BUG 2 FIX: Staff list sorted (online first, alphabetical within each group)
+    async function loadStaffList() {
+      const staffData = await apiGet('getOnlineStaff');
+      allStaff = staffData.staff || [];
+
+      // Sort: online first (0), offline second (1), alphabetical within each group
+      const sorted = allStaff.slice().sort((a, b) => {
+        const ao = a.status === 'online' ? 0 : 1;
+        const bo = b.status === 'online' ? 0 : 1;
+        if (ao !== bo) return ao - bo;
+        return a.name.localeCompare(b.name);
+      });
+
+      const container = document.getElementById('staffList');
+      if (!sorted.length) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">👥</div><div>No staff found</div></div>';
+        return;
+      }
+
+      container.innerHTML = sorted.map(s => `
+        <div class="staff-card">
+          <div class="staff-status ${s.status === 'online' ? 'online' : ''}"></div>
+          <div class="staff-info">
+            <div class="staff-name">${s.name}</div>
+            <div class="staff-meta">${s.role} · ${s.branch}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // BUG 3 FIX: Roster only shows Barista 1/2/3 slots, FM auto-injected on save
+    async function loadRosterPanel() {
+      // Populate dropdowns with barista-eligible staff (exclude FM)
+      const baristas = allStaff.filter(s => s.role !== 'Floor Manager');
+      const options = baristas.map(s => `<option value="${s.email}">${s.name}</option>`).join('');
+      
+      document.querySelectorAll('.roster-select').forEach(select => {
+        const current = select.value;
+        select.innerHTML = '<option value="">— Not assigned —</option>' + options;
+        select.value = current; // restore selection
+      });
+
+      // Load existing roster for this shift
+      const today = new Date().toISOString().split('T')[0];
+      const shift = getShift();
+      const data = await apiGet('getRosterAll', { date: today, shift });
+      const roster = data.roster || [];
+
+      // Populate state + UI from saved roster (baristas only)
+      rosterState = {};
+      roster.forEach(r => {
+        if (r.role !== 'Floor Manager') {
+          rosterState[r.role] = { email: r.email, name: r.name };
+          const select = document.querySelector(`.roster-select[data-role="${r.role}"]`);
+          if (select) select.value = r.email;
+        }
+      });
+
+      updateRosterStatus();
+    }
+
+    function updateRosterStatus() {
+      const ROSTER_ROLES = ['Barista 1', 'Barista 2', 'Barista 3']; // Only baristas
+      const assigned = ROSTER_ROLES.filter(r => rosterState[r]).length;
+      const total = ROSTER_ROLES.length;
+      const statusText = assigned === total ? `SET · ${total} ASSIGNED` : `${assigned} / ${total} ASSIGNED`;
+      document.getElementById('rosterStatusText').textContent = statusText;
+    }
+
+    async function saveRoster() {
+      const ROSTER_ROLES = ['Barista 1', 'Barista 2', 'Barista 3']; // Only baristas
+      
+      // Collect barista assignments from dropdowns
+      rosterState = {};
+      document.querySelectorAll('.roster-select').forEach(select => {
+        const role = select.dataset.role;
+        const email = select.value;
+        if (email) {
+          const staff = allStaff.find(s => s.email === email);
+          if (staff) {
+            rosterState[role] = { email: staff.email, name: staff.name };
+          }
+        }
+      });
+
+      // Build assignments array: baristas from dropdowns + auto-inject FM
+      const assignments = ROSTER_ROLES
+        .filter(r => rosterState[r])
+        .map(r => ({ role: r, email: rosterState[r].email, name: rosterState[r].name }));
+      
+      // Auto-inject FM — current user is always the FM for this shift
+      assignments.push({ role: 'Floor Manager', email: session.email, name: session.name });
+
+      const today = new Date().toISOString().split('T')[0];
+      const shift = getShift();
+
+      const res = await api('setRoster', { date: today, shift, assignments });
+      
+      if (res.success) {
+        updateRosterStatus();
+        alert('Roster saved ✓');
+      } else {
+        alert('Failed to save roster: ' + (res.error || 'Unknown error'));
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  BARISTA VIEW HANDLERS
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    function initBaristaHandlers() {
+      document.getElementById('btnLogoutBarista').addEventListener('click', logout);
+
+      // Priority filter
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          filterTasks(btn.dataset.filter);
+        });
+      });
+    }
+
+    async function loadBaristaView() {
+      document.getElementById('baristaName').textContent = session.name;
+      document.getElementById('baristaShift').textContent = getShift();
+      
+      // Get role from roster
+      const today = new Date().toISOString().split('T')[0];
+      const shift = getShift();
+      const roleData = await apiGet('getRoster', { email: session.email, date: today, shift });
+      const role = roleData.role || 'Barista';
+      document.getElementById('baristaRole').textContent = role;
+
+      await loadTasks();
+    }
+
+    async function loadTasks() {
+      // Get tasks from task sheets
+      const tasksData = await apiGet('getTasks');
+      const shift = getShift();
+      const tasks = shift === 'Morning' ? tasksData.openingTasks : tasksData.closingTasks;
+
+      // Get shift logs to determine which tasks are started/done
+      const today = new Date().toISOString().split('T')[0];
+      const logsData = await apiGet('getShiftLogs', { date: today, shift });
+      const logs = logsData.logs || [];
+
+      const container = document.getElementById('taskCards');
+      if (!tasks || !tasks.length) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✓</div><div>No tasks assigned</div></div>';
+        return;
+      }
+
+      container.innerHTML = tasks.map(t => {
+        const log = logs.find(l => l.staffName === session.name && l.taskName === t.task);
+        const isStarted = log && log.startTime && !log.completeTime;
+        const isDone = log && log.completeTime;
+        
+        const priorityClass = t.priority.includes('CRITICAL') ? 'critical' : t.priority.includes('HIGH') ? 'high' : '';
+        const priorityLabel = t.priority.replace('🔴 ', '').replace('🟡 ', '').replace('🟢 ', '');
+
+        return `
+          <div class="task-card ${isStarted ? 'started' : ''} ${isDone ? 'done' : ''}" data-task="${t.task}" data-priority="${priorityClass}">
+            <div class="task-card-header">
+              <div class="task-who">${t.who}</div>
+              ${priorityClass ? `<div class="task-priority ${priorityClass}">${priorityLabel}</div>` : ''}
+            </div>
+            <div class="task-name">${t.task}</div>
+            ${t.tip ? `<div class="task-tip">${t.tip}</div>` : ''}
+            <div class="task-actions">
+              ${!isStarted && !isDone ? `<button class="btn-task btn-start" onclick="startTask('${t.task.replace(/'/g, "\\'")}')">Start</button>` : ''}
+              ${isStarted ? `<div class="task-timer" data-task="${t.task}">—</div>` : ''}
+              ${isStarted ? `<button class="btn-task btn-done" onclick="completeTask('${t.task.replace(/'/g, "\\'")}')">Done</button>` : ''}
+              ${isDone ? `<div class="task-timer">${log.duration} min</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Start timers for started tasks
+      tasks.forEach(t => {
+        const log = logs.find(l => l.staffName === session.name && l.taskName === t.task);
+        if (log && log.startTime && !log.completeTime) {
+          startTaskTimer(t.task, log.startTime);
+        }
+      });
+    }
+
+    function filterTasks(filter) {
+      const cards = document.querySelectorAll('.task-card');
+      cards.forEach(card => {
+        if (filter === 'all') {
+          card.style.display = '';
+        } else {
+          card.style.display = card.dataset.priority === filter ? '' : 'none';
+        }
+      });
+    }
+
+    async function startTask(taskName) {
+      const today = new Date().toISOString().split('T')[0];
+      const shift = getShift();
+      const now = new Date();
+      const startTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const res = await api('logTaskStart', {
+        date: today,
+        shift,
+        branch: session.branch,
+        staffName: session.name,
+        taskName,
+        startTime
+      });
+
+      if (res.success) {
+        loadTasks(); // Refresh to show timer
+      } else {
+        alert('Failed to start task: ' + (res.error || 'Unknown error'));
+      }
+    }
+
+    async function completeTask(taskName) {
+      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const completeTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const res = await api('logTaskComplete', {
+        date: today,
+        branch: session.branch,
+        staffName: session.name,
+        taskName,
+        completeTime
+      });
+
+      if (res.success) {
+        stopTaskTimer(taskName);
+        loadTasks(); // Refresh to show done state
+      } else {
+        alert('Failed to complete task: ' + (res.error || 'Unknown error'));
+      }
+    }
+
+    function startTaskTimer(taskName, startTimeStr) {
+      // Parse "HH:mm" from today
+      const [h, m] = startTimeStr.split(':').map(Number);
+      const startTime = new Date();
+      startTime.setHours(h, m, 0, 0);
+
+      const updateTimer = () => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        const display = `${mins}:${String(secs).padStart(2, '0')}`;
+        
+        const timerEl = document.querySelector(`.task-timer[data-task="${taskName}"]`);
+        if (timerEl) timerEl.textContent = display;
+      };
+
+      updateTimer();
+      const intervalId = setInterval(updateTimer, 1000);
+      taskTimers[taskName] = { startTime, intervalId };
+    }
+
+    function stopTaskTimer(taskName) {
+      if (taskTimers[taskName]) {
+        clearInterval(taskTimers[taskName].intervalId);
+        delete taskTimers[taskName];
+      }
+    }
+
+    function clearAllTimers() {
+      Object.keys(taskTimers).forEach(stopTaskTimer);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  UTILITIES
+    // ══════════════════════════════════════════════════════════════════════════
+    
+    function showScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+      
+      if (screenId === 'screenFM') loadFMDashboard();
+      if (screenId === 'screenBarista') loadBaristaView();
+    }
+
+    function getShift() {
+      const h = new Date().getHours();
+      return h >= 8 && h < 15 ? 'Morning' : 'Evening';
+    }
+  </script>
+</body>
+</html>
