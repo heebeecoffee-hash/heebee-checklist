@@ -852,10 +852,13 @@
 
   <script>
     // ══════════════════════════════════════════════════════════════════════════
-    //  CONFIG — Replace with your Apps Script web app URL
+    //  CONFIG — ⚠️ PASTE YOUR APPS SCRIPT WEB APP URL BELOW ⚠️
     // ══════════════════════════════════════════════════════════════════════════
     
-    const API_URL = https://script.google.com/macros/s/AKfycbxTOYpFlT6JOEoPe8GZoe5ArZc23NpHp22vPheQezj59BL9ROPit0jFFiZmVR8rDK0Zfw/exec; // ← PASTE YOUR DEPLOYED WEB APP URL HERE
+    // Get your URL from: Apps Script editor → Deploy → Manage deployments → Web app URL
+    // It should look like: https://script.google.com/macros/s/AKfycby.../exec
+    
+    const API_URL = 'https://script.google.com/macros/s/AKfycbxTOYpFlT6JOEoPe8GZoe5ArZc23NpHp22vPheQezj59BL9ROPit0jFFiZmVR8rDK0Zfw/exec';
 
     // ══════════════════════════════════════════════════════════════════════════
     //  STATE
@@ -948,7 +951,7 @@
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  LOGIN HANDLERS
+    //  LOGIN HANDLERS (with mobile-safe PIN auto-advance fix)
     // ══════════════════════════════════════════════════════════════════════════
     
     function initLoginHandlers() {
@@ -957,19 +960,25 @@
       const btnLogin = document.getElementById('btnLogin');
       const errorMsg = document.getElementById('loginError');
 
-      // Auto-advance PIN digits
+      // MOBILE-SAFE PIN AUTO-ADVANCE (fixes iOS Safari focus issues)
       pinInputs.forEach((input, idx) => {
         input.addEventListener('input', (e) => {
+          // Ensure only one digit
+          if (e.target.value.length > 1) {
+            e.target.value = e.target.value.slice(-1);
+          }
+          
           const val = e.target.value;
           if (val.length === 1 && idx < 3) {
-            pinInputs[idx + 1].focus();
+            // Delay focus for mobile Safari compatibility
+            setTimeout(() => pinInputs[idx + 1].focus(), 10);
           }
           checkLoginReady();
         });
         
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Backspace' && !e.target.value && idx > 0) {
-            pinInputs[idx - 1].focus();
+            setTimeout(() => pinInputs[idx - 1].focus(), 10);
           }
         });
       });
